@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "crates/seed-config",
+    "crates/seed-core",
+    "crates/seed-cli",
+    "crates/seed-wasm"
+]
+resolver = "2"

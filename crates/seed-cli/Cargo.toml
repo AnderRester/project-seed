@@ -1,0 +1,11 @@
+[package]
+name = "seed-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+seed-config = { path = "../seed-config" }
+seed-core = { path = "../seed-core" }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+image = "0.25.9"

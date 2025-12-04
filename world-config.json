@@ -1,0 +1,391 @@
+{
+    "seedVersion": "0.1.0",
+    "worldId": "example-world",
+    "meta": {
+        "name": "Example World",
+        "description": "Prototype procedural world config for SEED-like engine.",
+        "author": "Andrei",
+        "createdAt": "2025-12-04T00:00:00Z"
+    },
+
+    "scale": {
+        "mode": "planet",
+        "regionSizeKm": 10.0,
+        "planetRadiusKm": 6371.0,
+        "coordinateSystem": "spherical",
+        "chunkSizeMeters": 256.0,
+        "maxDetailMeters": 0.05,
+        "maxSimulationDistanceKm": 1000.0
+    },
+
+    "cosmos": {
+        "starSystem": {
+            "stars": [
+                {
+                    "id": "star-0",
+                    "type": "g-type",
+                    "luminosity": 1.0,
+                    "color": [1.0, 0.96, 0.9]
+                }
+            ],
+            "planets": [
+                {
+                    "id": "planet-0",
+                    "name": "Seedia",
+                    "radiusKm": 6371.0,
+                    "massEarths": 1.0,
+                    "gravityMs2": 9.81,
+                    "dayLengthHours": 24.0,
+                    "yearLengthDays": 365.0,
+                    "axialTiltDegrees": 23.5,
+                    "orbit": {
+                        "starId": "star-0",
+                        "semiMajorAxisAu": 1.0,
+                        "eccentricity": 0.0167
+                    },
+                    "moons": [
+                        {
+                            "id": "moon-0",
+                            "name": "Luna",
+                            "radiusKm": 1737.0,
+                            "orbitDistanceKm": 384400.0
+                        }
+                    ]
+                }
+            ],
+            "activePlanetId": "planet-0"
+        }
+    },
+
+    "environment": {
+        "atmosphere": {
+            "composition": {
+                "N2": 0.78,
+                "O2": 0.21,
+                "Ar": 0.009,
+                "CO2": 0.0004
+            },
+            "pressureKPa": 101.3,
+            "baseTemperatureC": 25.0,
+            "humidityGlobalMean": 0.5,
+            "scatteringIntensity": 1.0,
+            "fogDensityBase": 0.02
+        },
+        "climateModel": {
+            "modelType": "banded",
+            "seaLevelMeters": 0.0,
+            "temperatureLapseRateCPerKm": 6.5,
+            "precipitationScale": 1.0,
+            "windGlobalPattern": "hadley_cells",
+            "stormFrequency": 0.3,
+            "stormIntensityMean": 0.5,
+            "seasonality": {
+                "enabled": true,
+                "seasonCount": 4,
+                "seasonLengthDays": 90
+            }
+        }
+    },
+
+    "geology": {
+        "heightmap": {
+            "generationMode": "tectonic_erosion",
+            "baseSeed": 123456,
+            "continentalScaleKm": 3000.0,
+            "mountainAmplitudeMeters": 4000.0,
+            "erosionIterations": 200,
+            "riverDensity": 0.7
+        },
+        "materialLayers": [
+            {
+                "id": "bedrock",
+                "name": "Bedrock",
+                "type": "rock",
+                "depthRangeMeters": [100.0, 10000.0]
+            },
+            {
+                "id": "soil",
+                "name": "Soil",
+                "type": "loose",
+                "depthRangeMeters": [0.1, 5.0]
+            },
+            {
+                "id": "sand",
+                "name": "Sand",
+                "type": "loose",
+                "depthRangeMeters": [0.0, 10.0]
+            }
+        ]
+    },
+
+    "materials": [
+        {
+            "id": "rock_granite",
+            "category": "rock",
+            "displayName": "Granite",
+            "densityKgM3": 2700,
+            "staticFriction": 0.7,
+            "dynamicFriction": 0.5,
+            "hardness": 0.9,
+            "brittleness": 0.8,
+            "plasticity": 0.1,
+            "thermalConductivity": 2.5,
+            "meltingPointC": 1200,
+            "erosionResistance": 0.9,
+            "supportsFootprints": false,
+            "visualProfile": "rock/granite"
+        },
+        {
+            "id": "soil_loam",
+            "category": "soil",
+            "displayName": "Loam",
+            "densityKgM3": 1400,
+            "staticFriction": 0.6,
+            "dynamicFriction": 0.4,
+            "hardness": 0.3,
+            "brittleness": 0.2,
+            "plasticity": 0.5,
+            "thermalConductivity": 0.25,
+            "meltingPointC": 120,
+            "erosionResistance": 0.4,
+            "supportsFootprints": true,
+            "footprintPersistence": 0.7,
+            "visualProfile": "ground/loam"
+        },
+        {
+            "id": "snow_powder",
+            "category": "snow",
+            "displayName": "Powder Snow",
+            "densityKgM3": 200,
+            "staticFriction": 0.3,
+            "dynamicFriction": 0.2,
+            "hardness": 0.1,
+            "brittleness": 0.2,
+            "plasticity": 0.3,
+            "thermalConductivity": 0.05,
+            "meltingPointC": 0,
+            "erosionResistance": 0.1,
+            "supportsFootprints": true,
+            "footprintPersistence": 0.9,
+            "visualProfile": "snow/powder"
+        }
+    ],
+
+    "biomes": [
+        {
+            "id": "temperate_forest",
+            "displayName": "Temperate Forest",
+            "climateRange": {
+                "temperatureC": [0, 25],
+                "humidity": [0.4, 0.9],
+                "elevationMeters": [0, 1500]
+            },
+            "precipitationRangeMmPerYear": [600, 2500],
+
+            "baseMaterialId": "soil",
+            "overlayMaterialIds": ["grass"],
+            "vegetationDensity": 0.8,
+            "allowSettlements": true,
+
+            "dominantMaterials": ["soil", "grass"],
+            "faunaProfiles": ["temperate_small_mammals", "temperate_birds"]
+        },
+        {
+            "id": "hot_desert",
+            "displayName": "Hot Desert",
+            "climateRange": {
+                "temperatureC": [20, 50],
+                "humidity": [0.0, 0.3],
+                "elevationMeters": [-50, 800]
+            },
+            "precipitationRangeMmPerYear": [0, 300],
+            "baseMaterialId": "sand",
+            "overlayMaterialIds": [],
+            "vegetationDensity": 0.05,
+            "allowSettlements": true,
+
+            "dominantMaterials": ["sand"],
+            "faunaProfiles": ["desert_reptiles"]
+        },
+        {
+            "id": "cold_mountains",
+            "displayName": "Cold Mountains",
+            "climateRange": {
+                "temperatureC": [-25, 5],
+                "humidity": [0.2, 0.9],
+                "elevationMeters": [1000, 4000]
+            },
+            "precipitationRangeMmPerYear": [300, 2000],
+            "baseMaterialId": "rock",
+            "overlayMaterialIds": ["snow"],
+            "vegetationDensity": 0.1,
+            "allowSettlements": false,
+
+            "dominantMaterials": ["rock", "snow"],
+            "faunaProfiles": ["mountain_goats", "raptors"]
+        },
+        {
+            "id": "tundra",
+            "displayName": "Tundra",
+            "climateRange": {
+                "temperatureC": [-20, 5],
+                "humidity": [0.3, 0.9],
+                "elevationMeters": [0, 1000]
+            },
+            "precipitationRangeMmPerYear": [200, 800],
+            "baseMaterialId": "soil_cold",
+            "overlayMaterialIds": ["moss"],
+            "vegetationDensity": 0.3,
+            "allowSettlements": false,
+
+            "dominantMaterials": ["soil_cold", "moss"],
+            "faunaProfiles": ["tundra_herbivores"]
+        }
+    ],
+
+    "interaction": {
+        "footprints": {
+            "enabled": true,
+            "maxDecalsPerChunk": 2048,
+            "deformationResolutionMeters": 0.05,
+            "fadeOverTime": true,
+            "fadeTimeSeconds": 3600
+        },
+        "surfaceDeformation": {
+            "enabled": true,
+            "supportMaterials": ["soil", "snow", "sand"],
+            "maxDeformationDepthMeters": 0.3
+        },
+        "objectInteraction": {
+            "leaveTracks": true,
+            "trackTypes": ["drag_marks", "wheel_tracks"]
+        }
+    },
+
+    "ecosystems": {
+        "simulationScale": "regional",
+        "timeStepMinutes": 60,
+        "speciesDefinitions": [
+            {
+                "id": "deer",
+                "trophicLevel": "herbivore",
+                "preferredBiomes": ["temperate_forest"],
+                "populationDensityPerKm2": 15,
+                "migrationEnabled": true
+            },
+            {
+                "id": "wolf",
+                "trophicLevel": "carnivore",
+                "preferredBiomes": ["temperate_forest"],
+                "populationDensityPerKm2": 3,
+                "migrationEnabled": true
+            }
+        ]
+    },
+
+    "catastrophes": {
+        "globalControls": {
+            "enabled": true,
+            "maxConcurrentEvents": 3,
+            "allowPlanetDestroyingEvents": true,
+            "baseRandomness": 0.2
+        },
+        "eventTypes": [
+            {
+                "id": "earthquake",
+                "displayName": "Earthquake",
+                "triggerModel": "tectonic_stress",
+                "baseFrequencyPerYear": 10,
+                "maxMagnitude": 9.0,
+                "affectedRadiusKmRange": [10, 500],
+                "canTriggerTsunami": true
+            },
+            {
+                "id": "volcanic_eruption",
+                "displayName": "Volcanic Eruption",
+                "triggerModel": "magma_pressure",
+                "baseFrequencyPerYear": 3,
+                "ashCloudGlobalImpact": 0.6,
+                "climateCoolingCMax": 2.0
+            },
+            {
+                "id": "meteor_impact",
+                "displayName": "Meteor Impact",
+                "triggerModel": "random_orchestrated",
+                "baseFrequencyPerYear": 0.01,
+                "craterRadiusKmRange": [5, 100],
+                "globalExtinctionRisk": 0.8
+            }
+        ]
+    },
+
+    "civilizations": {
+        "enabled": true,
+        "factionPresets": [
+            {
+                "id": "kingdom_north",
+                "name": "Northern Kingdom",
+                "techLevel": "medieval",
+                "preferredBiomes": ["temperate_forest"],
+                "startingPopulation": 500000,
+                "capitalLocationHint": {
+                    "latDeg": 45.0,
+                    "lonDeg": -10.0
+                }
+            }
+        ],
+        "historySimulation": {
+            "enabled": true,
+            "yearsToSimulate": 500,
+            "warLikelihood": 0.3,
+            "tradeImportance": 0.7,
+            "catastropheImpactOnHistory": 0.8
+        }
+    },
+
+    "narrativeDirector": {
+        "enabled": true,
+        "id": "cardinal-like",
+        "aggressiveness": 0.5,
+        "playerDangerBias": 0.5,
+        "worldStabilityBias": 0.4,
+        "canTriggerGlobalCatastrophes": true,
+        "questGeneration": {
+            "enabled": true,
+            "maxActiveQuestsPerPlayer": 10,
+            "useRealWorldState": true,
+            "preferredQuestTypes": ["exploration", "rescue", "defense", "resource_stabilization"]
+        },
+        "eventPolicies": {
+            "allowCityDestruction": true,
+            "allowPermanentBiomeChanges": true,
+            "maxPlayersKilledBySystemEvent": 0.9
+        }
+    },
+
+    "simulation": {
+        "time": {
+            "timeScale": 10.0,
+            "allowTimeAcceleration": true,
+            "maxTimeScaleInHub": 1.0,
+            "maxTimeScaleInBackgroundSim": 1000.0
+        },
+        "physics": {
+            "solverAccuracy": "high",
+            "maxSubsteps": 8
+        },
+        "lod": {
+            "terrainLodLevels": 6,
+            "objectLodLevels": 4,
+            "destructionLodLevels": 3
+        },
+        "network": {
+            "authoritativeMode": "server",
+            "tickRateHz": 30,
+            "maxLatencyMs": 150,
+            "regionRadiusKmActive": 5.0,
+            "regionRadiusKmBackground": 50.0,
+            "stateSyncStrategy": "delta_compressed"
+        }
+    }
+}
