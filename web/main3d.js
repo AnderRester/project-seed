@@ -15,8 +15,8 @@ async function run() {
         // 2. Инициализируем wasm
         await init();
 
-        const width = 2048;
-        const height = 2048;
+        const width = 512;
+        const height = 512;
 
         const world = new SeedWorld(configText, width, height);
         const heights = world.heightmap_values(); // Float32Array (через wasm-bindgen)
@@ -51,8 +51,8 @@ async function run() {
         controls.update();
 
         // 4. Создаём плоскость и поднимаем вершины по высоте
-        const sizeX = 5000;
-        const sizeZ = 5000;
+        const sizeX = 2000;
+        const sizeZ = 2000;
         const geometry = new THREE.PlaneGeometry(sizeX, sizeZ, w - 1, h - 1);
 
         const positions = geometry.attributes.position;
