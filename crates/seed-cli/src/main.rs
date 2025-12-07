@@ -211,21 +211,49 @@ fn save_biome_map_to_png(bm: &BiomeMap, cfg: &WorldConfig, path: &str) -> anyhow
     Ok(())
 }
 
-fn build_biome_palette(cfg: &WorldConfig) -> Vec<[u8; 3]> {
-    let n = cfg.biomes.len().max(1);
-    let mut palette = Vec::with_capacity(n);
+// fn build_biome_palette(cfg: &WorldConfig) -> Vec<[u8; 3]> {
+//     let n = cfg.biomes.len().max(1);
+//     let mut palette = Vec::with_capacity(n);
 
-    for (i, biome) in cfg.biomes.iter().enumerate() {
-        // Используем индекс, чтобы разнести цвета по кругу, и слегка "сдвинем" по id
-        let t = (i as f32) / (n as f32);
-        let name_hash = simple_hash(&biome.id) as f32;
-        let hue = (t * 360.0 + (name_hash % 60.0)) % 360.0;
+//     for (i, biome) in cfg.biomes.iter().enumerate() {
+//         // Используем индекс, чтобы разнести цвета по кругу, и слегка "сдвинем" по id
+//         let t = (i as f32) / (n as f32);
+//         let name_hash = simple_hash(&biome.id) as f32;
+//         let hue = (t * 360.0 + (name_hash % 60.0)) % 360.0;
 
-        let (r, g, b) = hsv_to_rgb(hue, 0.8, 0.9);
-        palette.push([r, g, b]);
-    }
+//         let (r, g, b) = hsv_to_rgb(hue, 0.8, 0.9);
+//         palette.push([r, g, b]);
+//     }
 
-    palette
+//     palette
+// }
+
+pub fn build_biome_palette(cfg: &WorldConfig) -> Vec<[u8; 3]> {
+    cfg.biomes
+        .iter()
+        .map(|b| match b.id.as_str() {
+            // Тёплый лес
+            "temperate_forest" => [34, 139, 34],     // тёмно-зелёный
+            // Пустыня
+            "hot_desert" => [210, 180, 80],          // песочный
+            // Холодные горы
+            "cold_mountains" => [160, 160, 170],     // серо-каменный
+            // Тундра / холодная равнина
+            "tundra" => [150, 180, 160],             // холодно-зелёный
+            // fallback — если добавишь новый биом, но не задашь цвет
+            _ => {
+                // стабильный "псевдослучайный" цвет по hash id
+                let mut h = simple_hash(&b.id) as u64;
+                // чуть поиграем компонентами
+                let r = 80 + (h & 0x7F) as u8;
+                h >>= 7;
+                let g = 80 + (h & 0x7F) as u8;
+                h >>= 7;
+                let bl = 80 + (h & 0x7F) as u8;
+                [r, g, bl]
+            }
+        })
+        .collect()
 }
 
 /// Очень простой хеш строки (не для крипты, а для разнообразия цветов)

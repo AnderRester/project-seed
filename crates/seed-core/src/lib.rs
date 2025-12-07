@@ -5,7 +5,7 @@ pub mod biome;
 pub mod terrain;
 
 pub use biome::{generate_biome_map_from_config, BiomeMap};
-pub use terrain::{generate_heightmap_from_config, Heightmap};
+pub use terrain::{generate_heightmap_from_config, Heightmap, compute_flow_accumulation};
 
 #[derive(Debug, Error)]
 pub enum CoreError {

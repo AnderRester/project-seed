@@ -1,6 +1,7 @@
 use seed_config::WorldConfig;
 use seed_core::{
-    generate_biome_map_from_config, generate_heightmap_from_config, BiomeMap, Heightmap,
+    compute_flow_accumulation, generate_biome_map_from_config, generate_heightmap_from_config,
+    BiomeMap, Heightmap,
 };
 use wasm_bindgen::prelude::*;
 
@@ -59,26 +60,45 @@ fn build_worldview_rgba(hm: &Heightmap, bm: &BiomeMap, cfg: &WorldConfig) -> Vec
     let mut buf = vec![0u8; (hm.width * hm.height * 4) as usize];
 
     let palette = build_biome_palette(cfg);
-    let water_color = [40u8, 80u8, 160u8];
+
+    // Уровень моря (должен совпадать с генерацией/биомами)
+    let sea_level_norm = cfg.sea_level as f32;
+
+    // Поле стока для рек
+    let flow = compute_flow_accumulation(hm, sea_level_norm);
+
+    // Цвета воды, рек и пляжей
+    let shallow = [70u8, 140u8, 200u8];
+    let deep = [10u8, 30u8, 80u8];
+    let river_color = [30u8, 120u8, 220u8];
+    let beach_color = [210u8, 190u8, 120u8];
+    let beach_width = 0.03_f32; // ширина пляжа по высоте
+
+    // Свет и нормали
     let light_dir = normalize3(0.6, 0.6, 1.0);
     let slope_scale = 40.0_f32;
 
+    let h_h = hm.height as f32;
+
     for y in 0..hm.height {
         for x in 0..hm.width {
-            let hc = hm.get(x, y);
+            // --- высота и соседи ---
+            let hc = hm.get(x, y) as f32;
+            let idx1 = (y * hm.width + x) as usize;
 
             let xl = x.saturating_sub(1);
             let xr = (x + 1).min(hm.width - 1);
             let yu = y.saturating_sub(1);
             let yd = (y + 1).min(hm.height - 1);
 
-            let hl = hm.get(xl, y);
-            let hr = hm.get(xr, y);
-            let hu = hm.get(x, yu);
-            let hd = hm.get(x, yd);
+            let hl = hm.get(xl, y) as f32;
+            let hr = hm.get(xr, y) as f32;
+            let hu = hm.get(x, yu) as f32;
+            let hd = hm.get(x, yd) as f32;
 
-            let dx = (hr - hl) as f32;
-            let dy = (hd - hu) as f32;
+            // --- нормаль и освещение ---
+            let dx = hr - hl;
+            let dy = hd - hu;
 
             let nx = -dx * slope_scale;
             let ny = -dy * slope_scale;
@@ -91,11 +111,73 @@ fn build_worldview_rgba(hm: &Heightmap, bm: &BiomeMap, cfg: &WorldConfig) -> Vec
             shade = ambient + shade * (1.0 - ambient);
             shade = shade.clamp(0.0, 1.0);
 
-            let base_color = match bm.get_index(x, y) {
-                Some(idx) if idx < palette.len() => palette[idx],
-                _ => water_color,
+            // --- базовый цвет: биом или вода с градиентом ---
+            let mut base_color = match bm.get_index(x, y) {
+                Some(bi) if bi < palette.len() => palette[bi],
+                _ => {
+                    // вода: градиент по глубине
+                    let depth = (sea_level_norm - hc).max(0.0);
+                    let depth_norm = (depth / sea_level_norm).clamp(0.0, 1.0);
+                    let t = depth_norm;
+                    [
+                        (shallow[0] as f32 * (1.0 - t) + deep[0] as f32 * t) as u8,
+                        (shallow[1] as f32 * (1.0 - t) + deep[1] as f32 * t) as u8,
+                        (shallow[2] as f32 * (1.0 - t) + deep[2] as f32 * t) as u8,
+                    ]
+                }
             };
 
+            // --- снеговые шапки ---
+            // нормализованная широта [-1..1]: 0 на экваторе, ±1 на полюсах
+            let lat = (y as f32 / (h_h - 1.0)) * 2.0 - 1.0;
+            let lat_abs = lat.abs();
+
+            let snow_height_start = 0.7; // выше 70% высоты начинается снег
+            let snow_lat_start = 0.5; // ближе к полюсам (|lat|>0.5) снега больше
+
+            let height_factor =
+                ((hc - snow_height_start) / (1.0 - snow_height_start)).clamp(0.0, 1.0);
+            let lat_factor = ((lat_abs - snow_lat_start) / (1.0 - snow_lat_start)).clamp(0.0, 1.0);
+
+            let snow_mask = (height_factor * lat_factor).clamp(0.0, 1.0);
+
+            if snow_mask > 0.0 {
+                let s = snow_mask;
+                base_color[0] = (base_color[0] as f32 * (1.0 - s) + 255.0 * s) as u8;
+                base_color[1] = (base_color[1] as f32 * (1.0 - s) + 255.0 * s) as u8;
+                base_color[2] = (base_color[2] as f32 * (1.0 - s) + 255.0 * s) as u8;
+            }
+
+            // --- пляж только вдоль берега ---
+            if hc > sea_level_norm && is_coastal(hm, x, y, sea_level_norm) {
+                let dh = hc - sea_level_norm;
+                if dh > 0.0 && dh < beach_width {
+                    let t = (dh / beach_width).clamp(0.0, 1.0);
+                    let s = 1.0 - t;
+                    base_color[0] =
+                        (base_color[0] as f32 * (1.0 - s) + beach_color[0] as f32 * s) as u8;
+                    base_color[1] =
+                        (base_color[1] as f32 * (1.0 - s) + beach_color[1] as f32 * s) as u8;
+                    base_color[2] =
+                        (base_color[2] as f32 * (1.0 - s) + beach_color[2] as f32 * s) as u8;
+                }
+            }
+
+            // --- реки ---
+            let flow_val = flow[idx1]; // 0..1
+            if hc > sea_level_norm && flow_val > 0.1 {
+                let t = ((flow_val - 0.1) / 0.9).clamp(0.0, 1.0);
+                let intensity = t.powf(0.4); // крупные реки ярче
+
+                base_color[0] = (base_color[0] as f32 * (1.0 - intensity)
+                    + river_color[0] as f32 * intensity) as u8;
+                base_color[1] = (base_color[1] as f32 * (1.0 - intensity)
+                    + river_color[1] as f32 * intensity) as u8;
+                base_color[2] = (base_color[2] as f32 * (1.0 - intensity)
+                    + river_color[2] as f32 * intensity) as u8;
+            }
+
+            // --- применяем освещение ---
             let r = (base_color[0] as f32 * shade).round().clamp(0.0, 255.0) as u8;
             let g = (base_color[1] as f32 * shade).round().clamp(0.0, 255.0) as u8;
             let b = (base_color[2] as f32 * shade).round().clamp(0.0, 255.0) as u8;
@@ -113,20 +195,32 @@ fn build_worldview_rgba(hm: &Heightmap, bm: &BiomeMap, cfg: &WorldConfig) -> Vec
 
 // --- утилиты: палитра биомов (как в CLI) ---
 
-fn build_biome_palette(cfg: &WorldConfig) -> Vec<[u8; 3]> {
-    let n = cfg.biomes.len().max(1);
-    let mut palette = Vec::with_capacity(n);
-
-    for (i, biome) in cfg.biomes.iter().enumerate() {
-        let t = (i as f32) / (n as f32);
-        let name_hash = simple_hash(&biome.id) as f32;
-        let hue = (t * 360.0 + (name_hash % 60.0)) % 360.0;
-
-        let (r, g, b) = hsv_to_rgb(hue, 0.8, 0.9);
-        palette.push([r, g, b]);
-    }
-
-    palette
+pub fn build_biome_palette(cfg: &WorldConfig) -> Vec<[u8; 3]> {
+    cfg.biomes
+        .iter()
+        .map(|b| match b.id.as_str() {
+            // Тёплый лес
+            "temperate_forest" => [34, 139, 34], // тёмно-зелёный
+            // Пустыня
+            "hot_desert" => [210, 180, 80], // песочный
+            // Холодные горы
+            "cold_mountains" => [160, 160, 170], // серо-каменный
+            // Тундра / холодная равнина
+            "tundra" => [150, 180, 160], // холодно-зелёный
+            // fallback — если добавишь новый биом, но не задашь цвет
+            _ => {
+                // стабильный "псевдослучайный" цвет по hash id
+                let mut h = simple_hash(&b.id) as u64;
+                // чуть поиграем компонентами
+                let r = 80 + (h & 0x7F) as u8;
+                h >>= 7;
+                let g = 80 + (h & 0x7F) as u8;
+                h >>= 7;
+                let bl = 80 + (h & 0x7F) as u8;
+                [r, g, bl]
+            }
+        })
+        .collect()
 }
 
 fn simple_hash(s: &str) -> u32 {
@@ -137,27 +231,54 @@ fn simple_hash(s: &str) -> u32 {
     h
 }
 
-fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
-    let c = v * s;
-    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
-    let m = v - c;
+// fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
+//     let c = v * s;
+//     let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+//     let m = v - c;
 
-    let (r1, g1, b1) = match h {
-        h if h < 60.0 => (c, x, 0.0),
-        h if h < 120.0 => (x, c, 0.0),
-        h if h < 180.0 => (0.0, c, x),
-        h if h < 240.0 => (0.0, x, c),
-        h if h < 300.0 => (x, 0.0, c),
-        _ => (c, 0.0, x),
-    };
+//     let (r1, g1, b1) = match h {
+//         h if h < 60.0 => (c, x, 0.0),
+//         h if h < 120.0 => (x, c, 0.0),
+//         h if h < 180.0 => (0.0, c, x),
+//         h if h < 240.0 => (0.0, x, c),
+//         h if h < 300.0 => (x, 0.0, c),
+//         _ => (c, 0.0, x),
+//     };
 
-    let r = ((r1 + m) * 255.0).round() as u8;
-    let g = ((g1 + m) * 255.0).round() as u8;
-    let b = ((b1 + m) * 255.0).round() as u8;
-    (r, g, b)
-}
+//     let r = ((r1 + m) * 255.0).round() as u8;
+//     let g = ((g1 + m) * 255.0).round() as u8;
+//     let b = ((b1 + m) * 255.0).round() as u8;
+//     (r, g, b)
+// }
 
 fn normalize3(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
     let len = (x * x + y * y + z * z).sqrt().max(1e-6);
     (x / len, y / len, z / len)
+}
+
+// helper: есть ли среди 4-х соседей вода?
+fn is_coastal(hm: &Heightmap, x: u32, y: u32, sea_level_norm: f32) -> bool {
+    let w = hm.width;
+    let h = hm.height;
+
+    let mut neighbors = [
+        (x.wrapping_sub(1), y),
+        (x + 1, y),
+        (x, y.wrapping_sub(1)),
+        (x, y + 1),
+    ];
+
+    for (nx, ny) in neighbors.iter_mut() {
+        if *nx >= w {
+            *nx = w - 1;
+        }
+        if *ny >= h {
+            *ny = h - 1;
+        }
+
+        if hm.get(*nx, *ny) <= sea_level_norm {
+            return true;
+        }
+    }
+    false
 }

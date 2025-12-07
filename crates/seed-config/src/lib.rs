@@ -35,6 +35,8 @@ pub struct WorldConfig {
     pub civilizations: CivilizationsConfig,
     pub narrative_director: NarrativeDirectorConfig,
     pub simulation: SimulationConfig,
+    pub world_seed: u64,
+    pub sea_level: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

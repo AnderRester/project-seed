@@ -37,7 +37,7 @@ pub fn generate_heightmap_from_config(cfg: &WorldConfig, width: u32, height: u32
 
     let mut raw_values = Vec::with_capacity((width * height) as usize);
 
-    // Масштаб континентов
+    // Масштаб континентов (в “условных км”)
     let continental_scale = hcfg.continental_scale_km.max(10.0);
 
     let freq_cont = 0.5 / continental_scale; // очень низкая частота
@@ -135,7 +135,7 @@ pub fn generate_heightmap_from_config(cfg: &WorldConfig, width: u32, height: u32
             // Хребты только на суше + усиление там, где сильный градиент континента
             let mountain_raw = ridge_sum * land * grad_factor;
 
-            // Нормируем горы в [0..1] примерно
+            // Нормируем горы в [0..~2]
             let mountain = mountain_raw.max(0.0).min(2.0);
 
             // --- Итоговая высота ---
@@ -167,8 +167,27 @@ pub fn generate_heightmap_from_config(cfg: &WorldConfig, width: u32, height: u32
         }
     }
 
-    // <-- здесь вставляем вызов эрозии
-    apply_thermal_erosion(width, height, &mut raw_values, 25, 0.02, 0.4);
+    // --- МЯГКАЯ ЭРОЗИЯ: СНАЧАЛА ТЕРМИЧЕСКАЯ, ПОТОМ ГИДРО ---
+
+    // 1. Термическая (осыпание склонов)
+    apply_thermal_erosion(
+        width,
+        height,
+        &mut raw_values,
+        8,    // iterations: умеренное сглаживание
+        0.03, // talus: порог уклона
+        0.15, // amount: доля перепада, которая "сползает"
+    );
+
+    // 2. Гидро-эрозия (формирование мягких русел)
+    apply_flow_erosion(
+        width,
+        height,
+        &mut raw_values,
+        0.25,  // water_level_fraction: что считаем "морем"
+        120.0, // flow_threshold: порог потока для вырезания
+        0.015, // carve_strength: максимальная глубина вырезания
+    );
 
     // После эрозии min/max поменялись — пересчитаем
     min_v = f64::MAX;
@@ -187,7 +206,7 @@ pub fn generate_heightmap_from_config(cfg: &WorldConfig, width: u32, height: u32
     let mut norm = Vec::with_capacity(raw_values.len());
     for v in raw_values {
         let mut x = (v - min_v) / range;
-        x = x.powf(1.05);
+        x = x.powf(1.05); // лёгкая коррекция распределения
         norm.push(x as f32);
     }
 
@@ -196,6 +215,89 @@ pub fn generate_heightmap_from_config(cfg: &WorldConfig, width: u32, height: u32
         height,
         values: norm,
     }
+}
+
+/// D8-сток: для каждой клетки считаем, сколько "воды" через неё проходит.
+/// Возвращает вектор длиной width*height, значения нормированы в [0..1].
+pub fn compute_flow_accumulation(hm: &Heightmap, sea_level_norm: f32) -> Vec<f32> {
+    let w = hm.width as usize;
+    let h = hm.height as usize;
+    let len = w * h;
+    if len == 0 {
+        return Vec::new();
+    }
+
+    let vals = &hm.values;
+    let mut downslope: Vec<Option<usize>> = vec![None; len];
+
+    // D8: для каждой клетки ищем самого низкого соседа (если мы выше него и выше моря)
+    for y in 0..h {
+        for x in 0..w {
+            let idx = y * w + x;
+            let h_here = vals[idx] as f32;
+            if h_here <= sea_level_norm {
+                continue; // море — сток не считаем
+            }
+
+            let mut best_diff = 0.0f32;
+            let mut best_n: Option<usize> = None;
+
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    let nx = x as isize + dx as isize;
+                    let ny = y as isize + dy as isize;
+                    if nx < 0 || ny < 0 || nx >= w as isize || ny >= h as isize {
+                        continue;
+                    }
+                    let nidx = ny as usize * w + nx as usize;
+                    let h_nei = vals[nidx] as f32;
+                    let diff = h_here - h_nei;
+                    if diff > best_diff {
+                        best_diff = diff;
+                        best_n = Some(nidx);
+                    }
+                }
+            }
+
+            if best_diff > 0.0 {
+                downslope[idx] = best_n;
+            }
+        }
+    }
+
+    // Порядок обхода: сверху вниз по высоте
+    let mut order: Vec<usize> = (0..len).collect();
+    order.sort_unstable_by(|&a, &b| {
+        vals[b]
+            .partial_cmp(&vals[a])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // Накопление потока
+    let mut flow = vec![1.0f32; len];
+    for &idx in &order {
+        if let Some(nidx) = downslope[idx] {
+            flow[nidx] += flow[idx];
+        }
+    }
+
+    // Нормализация в [0..1]
+    let mut max_flow = 0.0f32;
+    for f in &flow {
+        if *f > max_flow {
+            max_flow = *f;
+        }
+    }
+    if max_flow > 0.0 {
+        for f in &mut flow {
+            *f /= max_flow;
+        }
+    }
+
+    flow
 }
 
 // Простая термическая эрозия.
@@ -295,5 +397,119 @@ fn apply_thermal_erosion(
         for i in 0..len {
             heights[i] += delta[i];
         }
+    }
+}
+
+/// Гидро-эрозия по схеме D8:
+/// - считаем для каждой клетки, сколько "воды" через неё проходит;
+/// - места с большим потоком немного "вырезаем" вниз — формируются русла.
+fn apply_flow_erosion(
+    width: u32,
+    height: u32,
+    heights: &mut [f64],
+    water_level_fraction: f64, // доля диапазона высот, считаем ниже этого уровня "морем"
+    flow_threshold: f64,       // порог потока, выше которого начинаем резать
+    carve_strength: f64,       // максимальная глубина вырезания в единицах высоты
+) {
+    let w = width as usize;
+    let h = height as usize;
+    let len = w * h;
+    if heights.len() != len || len == 0 {
+        return;
+    }
+
+    // min/max для оценки уровня "моря"
+    let mut min_h = f64::MAX;
+    let mut max_h = f64::MIN;
+    for &v in heights.iter() {
+        if v < min_h {
+            min_h = v;
+        }
+        if v > max_h {
+            max_h = v;
+        }
+    }
+    let range = (max_h - min_h).max(1e-6);
+    let water_level = min_h + range * water_level_fraction;
+
+    // Для каждой клетки найдём "downslope" соседа — наиболее низкого.
+    let mut downslope: Vec<Option<usize>> = vec![None; len];
+
+    for y in 0..h {
+        for x in 0..w {
+            let idx = y * w + x;
+            let h_here = heights[idx];
+
+            let mut best_diff = 0.0;
+            let mut best_neighbor: Option<usize> = None;
+
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    let nx = x as isize + dx as isize;
+                    let ny = y as isize + dy as isize;
+                    if nx < 0 || ny < 0 || nx >= w as isize || ny >= h as isize {
+                        continue;
+                    }
+                    let nidx = ny as usize * w + nx as usize;
+                    let h_nei = heights[nidx];
+                    let diff = h_here - h_nei;
+                    if diff > best_diff {
+                        best_diff = diff;
+                        best_neighbor = Some(nidx);
+                    }
+                }
+            }
+
+            if best_diff > 0.0 {
+                downslope[idx] = best_neighbor;
+            }
+        }
+    }
+
+    // Список индексов, отсортированных по высоте (сверху вниз)
+    let mut order: Vec<usize> = (0..len).collect();
+    order.sort_unstable_by(|&a, &b| {
+        heights[b]
+            .partial_cmp(&heights[a])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // Инициализируем поток: каждая клетка "даёт" 1 единицу воды
+    let mut flow = vec![1.0_f64; len];
+    for &idx in &order {
+        if let Some(nidx) = downslope[idx] {
+            flow[nidx] += flow[idx];
+        }
+    }
+
+    // Максимальный поток для нормализации
+    let mut max_flow = 0.0;
+    for &f in &flow {
+        if f > max_flow {
+            max_flow = f;
+        }
+    }
+    if max_flow <= 0.0 {
+        return;
+    }
+
+    // Вырезаем русла
+    for idx in 0..len {
+        // не трогаем дно океана
+        if heights[idx] <= water_level {
+            continue;
+        }
+
+        let f = flow[idx];
+        if f < flow_threshold {
+            continue;
+        }
+
+        // k ~ 0..1, но быстро растёт при больших потоках
+        let k = (f / max_flow).sqrt();
+        heights[idx] -= carve_strength * k;
     }
 }
