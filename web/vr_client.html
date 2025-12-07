@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>SEED VR Client</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            touch-action: none;
+        }
+
+        #status {
+            position: fixed;
+            top: 8px;
+            left: 8px;
+            padding: 4px 6px;
+            background: rgba(0, 0, 0, 0.5);
+            color: #fff;
+            font-family: system-ui, sans-serif;
+            font-size: 11px;
+            z-index: 10;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="status">Connecting...</div>
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+    </script>
+    <script type="module" src="./vr_client.js"></script>
+</body>
+
+</html>
