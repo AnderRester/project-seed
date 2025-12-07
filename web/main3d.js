@@ -16,7 +16,7 @@ async function run() {
         // 2. Инициализируем wasm
         await init();
 
-        // Размер heightmap
+        // Размер heightmap'а
         const reqWidth = 1536;
         const reqHeight = 768;
 
@@ -58,14 +58,14 @@ async function run() {
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x050608);
 
+        // X,Z – размеры плоскости, Y – высота
         const TERRAIN_SIZE_X = 2600;
-        const TERRAIN_SIZE_Y = 2200;
         const TERRAIN_SIZE_Z = 1600;
-        const MAX_HEIGHT = 260; // вертикальный масштаб (метры условно)
+        const MAX_HEIGHT = 260; // вертикальный масштаб (условные метры)
 
         // --------- КАМЕРА ---------
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 8000);
-        // Y — вверх (по умолчанию), ничего не меняем
+        // Y — вверх по умолчанию
         camera.position.set(0, MAX_HEIGHT * 3.0, TERRAIN_SIZE_Z * 0.9);
         camera.lookAt(0, 0, 0);
 
@@ -82,7 +82,7 @@ async function run() {
         orbitControls.update();
 
         // --------- ГЕОМЕТРИЯ ТЕРРЕЙНА ---------
-        // Плоскость XY -> повернём так, чтобы она легла в XZ, а высота была по Y
+        // Плоскость XY -> переворачиваем в XZ, высота идёт по Y
         const geometry = new THREE.PlaneGeometry(TERRAIN_SIZE_X, TERRAIN_SIZE_Z, w - 1, h - 1);
         geometry.rotateX(-Math.PI / 2); // теперь XZ-плоскость, Y-вверх
 
@@ -97,7 +97,7 @@ async function run() {
                 const y = heightNorm * MAX_HEIGHT;
 
                 const vertIndex = idx * 3;
-                // x,z уже заданы в геометрии, меняем только высоту по Y
+                // x, z уже заданы в геометрии, меняем только высоту по Y
                 posArray[vertIndex + 1] = y;
             }
         }
@@ -133,22 +133,23 @@ async function run() {
             left: false,
             right: false,
         };
-        // const velocity = new THREE.Vector3();
-        // const direction = new THREE.Vector3();
-        const clock = new THREE.Clock();
 
+        const clock = new THREE.Clock();
         const WALK_SPEED = 40;
         const EYE_HEIGHT = 1.8;
-        const MAX_VERTICAL_STEP = 2.0; // макс. "шаг" камеры по высоте за кадр
-        const VERTICAL_SMOOTH = 0.35; // сглаживание 0..1
 
-        // выбор высоты по world XZ (simple nearest-neighbour)
-        function sampleHeightAt(worldX, worldY) {
-            // Переводим мировые координаты в индексы heightmap (0..w-1, 0..h-1)
+        // Настройки "прилипания" к поверхности
+        const MAX_VERTICAL_STEP = 1.5; // макс. шаг по высоте за кадр
+        const VERTICAL_SMOOTH = 0.6; // сглаживание 0..1
+
+        // --------- ВЫБОР ВЫСОТЫ ПО МИРОВЫМ XZ ---------
+        function sampleHeightAt(worldX, worldZ) {
+            // worldX/worldZ в диапазоне [-size/2 .. size/2]
+            // переводим в индексы heightmap (0..w-1, 0..h-1)
             const u = (worldX / TERRAIN_SIZE_X + 0.5) * (w - 1);
-            const v = (worldY / TERRAIN_SIZE_Y + 0.5) * (h - 1);
+            const v = (worldZ / TERRAIN_SIZE_Z + 0.5) * (h - 1);
 
-            // Вне плоскости – считаем, что высота = 0
+            // Вне плоскости – высота = 0
             if (u < 0 || v < 0 || u > w - 1 || v > h - 1) {
                 return 0;
             }
@@ -176,7 +177,7 @@ async function run() {
             const h1 = h01 * (1 - fx) + h11 * fx;
             const hNorm = h0 * (1 - fy) + h1 * fy; // 0..1
 
-            return hNorm * MAX_HEIGHT; // высота в мировых единицах (по Z)
+            return hNorm * MAX_HEIGHT; // высота в мировых единицах по Y
         }
 
         function placePlayerAt(x, z) {
@@ -200,10 +201,8 @@ async function run() {
             if (mode === 'fp') return;
             mode = 'fp';
             orbitControls.enabled = false;
-
-            // ставим игрока в центр карты (можно потом улучшить)
+            // ставим игрока в центр карты (можно улучшить потом)
             placePlayerAt(0, 0);
-
             fpControls.lock();
             console.log('Switched to FIRST-PERSON mode');
         }
@@ -268,7 +267,7 @@ async function run() {
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // --------- ОБНОВЛЕНИЕ FPS-КОНТРОЛОВ ---------
+        // --------- ОБНОВЛЕНИЕ FP-КОНТРОЛОВ ---------
         function updateFP(delta) {
             if (mode !== 'fp' || !fpControls.isLocked) return;
 
@@ -284,20 +283,18 @@ async function run() {
             if (moveForward !== 0) fpControls.moveForward(moveForward);
             if (moveRight !== 0) fpControls.moveRight(moveRight);
 
-            // --- прилипание к рельефу по Z с мягким ограничением шага ---
+            // --- прилипание к рельефу по Y с мягким ограничением шага ---
             const obj = fpControls.getObject();
+            const groundY = sampleHeightAt(obj.position.x, obj.position.z);
+            let targetY = groundY + EYE_HEIGHT;
 
-            const groundZ = sampleHeightAt(obj.position.x, obj.position.y);
-            let targetZ = groundZ + EYE_HEIGHT;
-
-            // ограничиваем мгновенный скачок
-            const diff = targetZ - obj.position.z;
+            const diff = targetY - obj.position.y;
             const clampedDiff = THREE.MathUtils.clamp(diff, -MAX_VERTICAL_STEP, MAX_VERTICAL_STEP);
-            const intermediateZ = obj.position.z + clampedDiff;
+            const intermediateY = obj.position.y + clampedDiff;
 
-            // лёгкое сглаживание
-            obj.position.z = THREE.MathUtils.lerp(obj.position.z, intermediateZ, VERTICAL_SMOOTH);
+            obj.position.y = THREE.MathUtils.lerp(obj.position.y, intermediateY, VERTICAL_SMOOTH);
         }
+
         // --------- РЕНДЕР-ЦИКЛ ---------
         function animate() {
             requestAnimationFrame(animate);

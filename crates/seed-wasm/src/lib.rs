@@ -30,6 +30,14 @@ impl SeedWorld {
         })
     }
 
+    #[wasm_bindgen]
+    pub fn height_chunk(&self, origin_x: u32, origin_y: u32, width: u32, height: u32) -> Vec<f32> {
+        let chunk = self
+            .heightmap
+            .sample_chunk(origin_x, origin_y, width, height);
+        chunk.values
+    }
+
     /// Ширина карты
     #[wasm_bindgen(getter)]
     pub fn width(&self) -> u32 {

@@ -10,6 +10,16 @@ pub struct Heightmap {
     pub values: Vec<f32>,
 }
 
+#[derive(Debug, Clone)]
+pub struct HeightChunk {
+    pub origin_x: u32,
+    pub origin_y: u32,
+    pub width: u32,
+    pub height: u32,
+    /// Плоский массив значений, row-major, [0..1]
+    pub values: Vec<f32>,
+}
+
 impl Heightmap {
     #[inline]
     pub fn index(&self, x: u32, y: u32) -> usize {
@@ -19,6 +29,37 @@ impl Heightmap {
     #[inline]
     pub fn get(&self, x: u32, y: u32) -> f32 {
         self.values[self.index(x, y)]
+    }
+}
+
+impl Heightmap {
+    pub fn sample_chunk(
+        &self,
+        origin_x: u32,
+        origin_y: u32,
+        width: u32,
+        height: u32,
+    ) -> HeightChunk {
+        let max_w = (origin_x + width).min(self.width);
+        let max_h = (origin_y + height).min(self.height);
+        let w = max_w - origin_x;
+        let h = max_h - origin_y;
+
+        let mut vals = Vec::with_capacity((w * h) as usize);
+
+        for y in origin_y..max_h {
+            for x in origin_x..max_w {
+                vals.push(self.get(x, y));
+            }
+        }
+
+        HeightChunk {
+            origin_x,
+            origin_y,
+            width: w,
+            height: h,
+            values: vals,
+        }
     }
 }
 
