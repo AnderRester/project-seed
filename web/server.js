@@ -471,7 +471,11 @@ setInterval(() => {
                 const rSent = (s.bytesSent / 1024 / 1024).toFixed(2);
                 const rRecv = (s.bytesReceived / 1024 / 1024).toFixed(2);
                 console.log(
-                    `[STATS][Room ${roomCode}] Sent: ${s.messagesSent} msgs (${rSent} MB), Received: ${s.messagesReceived} msgs (${rRecv} MB), Clients: ${room.clients.size}, Host: ${room.host ? "connected" : "disconnected"}`
+                    `[STATS][Room ${roomCode}] Sent: ${s.messagesSent} msgs (${rSent} MB), Received: ${
+                        s.messagesReceived
+                    } msgs (${rRecv} MB), Clients: ${room.clients.size}, Host: ${
+                        room.host ? "connected" : "disconnected"
+                    }`
                 );
 
                 // Обнуляем room-статистику

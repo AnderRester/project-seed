@@ -906,12 +906,7 @@ function handleWorldSnapshot(snapshot) {
         if (p.head_pos && p.head_quat) {
             // Если это VR-клиент, используем head_pose
             obj.position.set(p.head_pos[0], p.head_pos[1], p.head_pos[2]);
-            const q = new THREE.Quaternion(
-                p.head_quat[0],
-                p.head_quat[1],
-                p.head_quat[2],
-                p.head_quat[3]
-            );
+            const q = new THREE.Quaternion(p.head_quat[0], p.head_quat[1], p.head_quat[2], p.head_quat[3]);
             obj.quaternion.copy(q);
         }
     }

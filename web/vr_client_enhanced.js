@@ -191,7 +191,6 @@ async function runVRClient() {
         }
     }
 
-
     // ========== HP BAR UPDATE ==========
     function updateHPBar() {
         hpSystem.updateHP(playerHP, playerMaxHP);
@@ -240,31 +239,30 @@ function createRoomCodeInput() {
         text-shadow: 0 2px 20px rgba(0,200,255,0.5);
     `;
 
+    // Convert DeviceOrientation (alpha, beta, gamma in degrees) to quaternion [x, y, z, w]
+    // alpha: 0..360 (z axis), beta: -180..180 (x axis), gamma: -90..90 (y axis)
+    function eulerToQuaternion(alphaDeg, betaDeg, gammaDeg) {
+        const deg2rad = Math.PI / 180;
 
-        // Convert DeviceOrientation (alpha, beta, gamma in degrees) to quaternion [x, y, z, w]
-        // alpha: 0..360 (z axis), beta: -180..180 (x axis), gamma: -90..90 (y axis)
-        function eulerToQuaternion(alphaDeg, betaDeg, gammaDeg) {
-            const deg2rad = Math.PI / 180;
+        const alpha = alphaDeg * deg2rad; // yaw (z)
+        const beta = betaDeg * deg2rad; // pitch (x)
+        const gamma = gammaDeg * deg2rad; // roll (y)
 
-            const alpha = alphaDeg * deg2rad; // yaw (z)
-            const beta = betaDeg * deg2rad;   // pitch (x)
-            const gamma = gammaDeg * deg2rad; // roll (y)
+        const c1 = Math.cos(alpha / 2);
+        const s1 = Math.sin(alpha / 2);
+        const c2 = Math.cos(beta / 2);
+        const s2 = Math.sin(beta / 2);
+        const c3 = Math.cos(gamma / 2);
+        const s3 = Math.sin(gamma / 2);
 
-            const c1 = Math.cos(alpha / 2);
-            const s1 = Math.sin(alpha / 2);
-            const c2 = Math.cos(beta / 2);
-            const s2 = Math.sin(beta / 2);
-            const c3 = Math.cos(gamma / 2);
-            const s3 = Math.sin(gamma / 2);
+        // Z * X * Y intrinsic rotation order
+        const w = c1 * c2 * c3 - s1 * s2 * s3;
+        const x = s2 * c1 * c3 + c2 * s1 * s3;
+        const y = c2 * s1 * c3 - s2 * c1 * s3;
+        const z = c2 * c3 * s1 + s2 * s3 * c1;
 
-            // Z * X * Y intrinsic rotation order
-            const w = c1 * c2 * c3 - s1 * s2 * s3;
-            const x = s2 * c1 * c3 + c2 * s1 * s3;
-            const y = c2 * s1 * c3 - s2 * c1 * s3;
-            const z = c2 * c3 * s1 + s2 * s3 * c1;
-
-            return [x, y, z, w];
-        }
+        return [x, y, z, w];
+    }
     const input = document.createElement("input");
     input.type = "text";
     input.placeholder = "Enter Room Code";
