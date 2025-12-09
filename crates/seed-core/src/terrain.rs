@@ -152,7 +152,9 @@ pub fn generate_heightmap_from_config(cfg: &WorldConfig, width: u32, height: u32
                 amp *= 0.5;
                 f *= 2.0;
             }
-            detail *= 0.25;
+            // Чуть меньше амплитуда мелких деталей,
+            // чтобы рельеф был более плавным.
+            detail *= 0.18;
 
             // --- Анизотропные горные хребты ---
 
@@ -188,7 +190,8 @@ pub fn generate_heightmap_from_config(cfg: &WorldConfig, width: u32, height: u32
             let coastal_width = 0.18;
             let coastal = (land / coastal_width).clamp(0.0, 1.0);
 
-            let mountain_inland = mountain * (0.6 + 0.7 * coastal); // 0.6..1.3
+            // Смягчаем вклад гор, чтобы пики были менее резкими.
+            let mountain_inland = mountain * (0.4 + 0.5 * coastal); // 0.4..0.9
             let detail_inland = detail * coastal;
 
             let mut elevation = base_land + detail_inland + mountain_inland;
@@ -227,7 +230,7 @@ pub fn generate_heightmap_from_config(cfg: &WorldConfig, width: u32, height: u32
         &mut raw_values,
         0.22,  // water_level_fraction: реалистичный уровень моря
         120.0, // flow_threshold: выше порог = меньше мелких русел
-        0.018, // carve_strength: меньше глубина = плавнее русла
+        0.010, // carve_strength: ещё меньше глубина = более мелкие русла
     );
 
     // 3. Генерация озёр в низинах - УВЕЛИЧЕНО количество
@@ -246,7 +249,7 @@ pub fn generate_heightmap_from_config(cfg: &WorldConfig, width: u32, height: u32
         height,
         &mut raw_values,
         &perlin_ridge1,
-        0.018, // carve_intensity: меньше интенсивность = плавнее каньоны
+        0.010, // carve_intensity: ещё меньше интенсивность = неглубокие каньоны
     );
 
     // 5. Финальное сглаживание для устранения артефактов - УСИЛЕНО
@@ -254,8 +257,8 @@ pub fn generate_heightmap_from_config(cfg: &WorldConfig, width: u32, height: u32
         width,
         height,
         &mut raw_values,
-        3,   // iterations: увеличено для более плавного рельефа
-        0.8, // sigma: больший радиус для сильного сглаживания
+        4,   // iterations: ещё чуть больше сглаживания
+        0.9, // sigma: немного шире фильтр
     );
 
     // После эрозии min/max поменялись — пересчитаем
@@ -275,7 +278,8 @@ pub fn generate_heightmap_from_config(cfg: &WorldConfig, width: u32, height: u32
     let mut norm = Vec::with_capacity(raw_values.len());
     for v in raw_values {
         let mut x = (v - min_v) / range;
-        x = x.powf(1.05); // лёгкая коррекция распределения
+        // Небольшое сглаживание: степени < 1 сглаживают контраст высот.
+        x = x.powf(0.9);
         norm.push(x as f32);
     }
 

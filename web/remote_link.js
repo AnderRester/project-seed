@@ -6,12 +6,13 @@
 // ОБЯЗАТЕЛЬНО: mini_ws_server НЕ должен трогать payload,
 // просто пробрасывать бинарные и текстовые фреймы как есть.
 
-const WS_PORT = 8080;
+const WS_PORT = 9000;
+const WS_PATH = '/relay';
 
 function baseWsUrl(role, roomCode = null) {
-    // Always use localhost for development
-    const host = "localhost";
-    let url = `ws://${host}:${WS_PORT}/?role=${encodeURIComponent(role)}`;
+    // Используем тот же хост, где открыт фронтенд
+    const host = location.hostname || 'localhost';
+    let url = `ws://${host}:${WS_PORT}${WS_PATH}?role=${encodeURIComponent(role)}`;
     if (roomCode) {
         url += `&room=${encodeURIComponent(roomCode)}`;
     }
@@ -36,20 +37,20 @@ export function startHostLink(getStateFn, onStatusChange, roomCode = null) {
 
     function connect() {
         if (isConnecting || (socket && socket.readyState === WebSocket.OPEN)) {
-            console.log("[HostLink] Already connecting or connected, skipping...");
+            console.log('[HostLink] Already connecting or connected, skipping...');
             return;
         }
 
         isConnecting = true;
-        socket = new WebSocket(baseWsUrl("host", assignedRoomCode));
+        socket = new WebSocket(baseWsUrl('host', assignedRoomCode));
 
-        socket.binaryType = "blob";
+        socket.binaryType = 'blob';
 
         socket.onopen = () => {
             isOpen = true;
             isConnecting = false;
-            onStatusChange?.("connected");
-            console.log("[HostLink] connected, waiting for room assignment...");
+            onStatusChange?.('connected');
+            console.log('[HostLink] connected, waiting for room assignment...');
 
             // Глобальный хук для отправки кадров
             window.__seedSendFrame = (blob) => {
@@ -57,7 +58,7 @@ export function startHostLink(getStateFn, onStatusChange, roomCode = null) {
                 try {
                     socket.send(blob); // бинарный JPEG/WebP кадр
                 } catch (e) {
-                    console.warn("[HostLink] send frame error:", e);
+                    console.warn('[HostLink] send frame error:', e);
                 }
             };
         };
@@ -65,26 +66,26 @@ export function startHostLink(getStateFn, onStatusChange, roomCode = null) {
         socket.onclose = (event) => {
             isOpen = false;
             isConnecting = false;
-            onStatusChange?.("disconnected");
+            onStatusChange?.('disconnected');
 
             const codeExplanation =
                 {
-                    1000: "Normal closure",
-                    1001: "Going away",
-                    1005: "No status code - Browser killed connection (usually buffer overflow or network issue)",
-                    1006: "Abnormal closure",
-                    1009: "Message too big",
-                    1011: "Server error",
-                }[event.code] || "Unknown";
+                    1000: 'Normal closure',
+                    1001: 'Going away',
+                    1005: 'No status code - Browser killed connection (usually buffer overflow or network issue)',
+                    1006: 'Abnormal closure',
+                    1009: 'Message too big',
+                    1011: 'Server error',
+                }[event.code] || 'Unknown';
 
             console.warn(
                 `[HostLink] ❌ Disconnected\n` +
                     `  Code: ${event.code} (${codeExplanation})\n` +
-                    `  Reason: ${event.reason || "(empty)"}\n` +
+                    `  Reason: ${event.reason || '(empty)'}\n` +
                     `  Clean: ${event.wasClean}\n` +
                     `  BufferedAmount before close: ${socket.bufferedAmount} bytes`
             );
-            console.warn("[HostLink] ⚠️ Auto-reconnect disabled - page refresh required");
+            console.warn('[HostLink] ⚠️ Auto-reconnect disabled - page refresh required');
         };
 
         socket.onerror = (e) => {
@@ -102,14 +103,14 @@ export function startHostLink(getStateFn, onStatusChange, roomCode = null) {
             const data = ev.data;
 
             // от клиентов мы ждём только JSON (ориентация и т.п.)
-            if (typeof data === "string") {
+            if (typeof data === 'string') {
                 try {
                     const msg = JSON.parse(data);
 
                     // Room code assignment from server
-                    if (msg.type === "room_created") {
+                    if (msg.type === 'room_created') {
                         assignedRoomCode = msg.roomCode;
-                        console.log("[HostLink] Room code assigned:", assignedRoomCode);
+                        console.log('[HostLink] Room code assigned:', assignedRoomCode);
                         // Notify via global
                         if (window.__seedOnRoomCreated) {
                             window.__seedOnRoomCreated(assignedRoomCode);
@@ -117,22 +118,22 @@ export function startHostLink(getStateFn, onStatusChange, roomCode = null) {
                     }
 
                     // Player joined/left notifications
-                    if (msg.type === "player_joined" || msg.type === "player_left") {
-                        console.log(`[HostLink] ${msg.type}:`, msg.playerId, "Total:", msg.totalPlayers);
+                    if (msg.type === 'player_joined' || msg.type === 'player_left') {
+                        console.log(`[HostLink] ${msg.type}:`, msg.playerId, 'Total:', msg.totalPlayers);
                         if (window.__seedOnPlayerUpdate) {
                             window.__seedOnPlayerUpdate(msg);
                         }
                     }
 
                     // Handle world sync request from client
-                    if (msg.type === "request_world_sync") {
+                    if (msg.type === 'request_world_sync') {
                         console.log(`[HostLink] Client ${msg.playerId} requesting world sync`);
                         if (window.__seedOnWorldSyncRequest) {
                             window.__seedOnWorldSyncRequest(msg.playerId);
                         }
                     }
 
-                    if (msg.type === "orientation" && msg.payload && window.__seedRemoteOrientation) {
+                    if (msg.type === 'orientation' && msg.payload && window.__seedRemoteOrientation) {
                         // payload: { yaw, pitch, roll }
                         window.__seedRemoteOrientation({
                             orientation: msg.payload,
@@ -141,7 +142,7 @@ export function startHostLink(getStateFn, onStatusChange, roomCode = null) {
                         });
                     }
                 } catch (e) {
-                    console.warn("[HostLink] parse client msg error:", e, "raw:", data);
+                    console.warn('[HostLink] parse client msg error:', e, 'raw:', data);
                 }
                 return;
             }
@@ -157,13 +158,13 @@ export function startHostLink(getStateFn, onStatusChange, roomCode = null) {
     const heartbeatId = setInterval(() => {
         if (socket && socket.readyState === WebSocket.OPEN) {
             try {
-                socket.send(JSON.stringify({ type: "heartbeat" }));
+                socket.send(JSON.stringify({ type: 'heartbeat' }));
                 heartbeatCount++;
                 if (heartbeatCount === 1 || heartbeatCount % 10 === 0) {
                     console.log(`[HostLink] ❤️ Heartbeat #${heartbeatCount}`);
                 }
             } catch (e) {
-                console.warn("[HostLink] heartbeat error:", e);
+                console.warn('[HostLink] heartbeat error:', e);
             }
         }
     }, 20000); // Every 20 seconds (more frequent than server check)
@@ -179,10 +180,10 @@ export function startHostLink(getStateFn, onStatusChange, roomCode = null) {
         try {
             const state = getStateFn();
             if (state && state.pos && state.quat) {
-                socket.send(JSON.stringify({ type: "state", payload: state }));
+                socket.send(JSON.stringify({ type: 'state', payload: state }));
             }
         } catch (e) {
-            console.warn("[HostLink] send state error:", e);
+            console.warn('[HostLink] send state error:', e);
         }
     }, 50); // ~20 FPS по состоянию
 
@@ -197,7 +198,7 @@ export function startHostLink(getStateFn, onStatusChange, roomCode = null) {
         },
         send(data) {
             if (!socket) {
-                console.warn("[HostLink] send() called but socket is null");
+                console.warn('[HostLink] send() called but socket is null');
                 return false;
             }
             if (socket.readyState !== WebSocket.OPEN) {
@@ -224,7 +225,7 @@ export function startHostLink(getStateFn, onStatusChange, roomCode = null) {
                 }
                 return true;
             } catch (err) {
-                console.error("[HostLink] ❌ send() error:", err);
+                console.error('[HostLink] ❌ send() error:', err);
                 return false;
             }
         },
@@ -253,27 +254,27 @@ export function startClientLink(onFrame, roomCode = null) {
 
     function connect() {
         if (isConnecting || (socket && socket.readyState === WebSocket.OPEN)) {
-            console.log("[ClientLink] Already connecting or connected, skipping...");
+            console.log('[ClientLink] Already connecting or connected, skipping...');
             return;
         }
 
         if (!roomCode) {
-            console.error("[ClientLink] Room code required!");
+            console.error('[ClientLink] Room code required!');
             return;
         }
 
         isConnecting = true;
-        socket = new WebSocket(baseWsUrl("client", roomCode));
-        socket.binaryType = "blob";
+        socket = new WebSocket(baseWsUrl('client', roomCode));
+        socket.binaryType = 'blob';
 
         socket.onopen = () => {
             isConnecting = false;
-            console.log("[ClientLink] connected, waiting for room confirmation...");
+            console.log('[ClientLink] connected, waiting for room confirmation...');
         };
 
         socket.onclose = () => {
             isConnecting = false;
-            console.warn("[ClientLink] disconnected");
+            console.warn('[ClientLink] disconnected');
             if (shouldReconnect) {
                 setTimeout(connect, 3000);
             }
@@ -281,29 +282,29 @@ export function startClientLink(onFrame, roomCode = null) {
 
         socket.onerror = (e) => {
             isConnecting = false;
-            console.error("[ClientLink] error:", e);
+            console.error('[ClientLink] error:', e);
         };
 
         socket.onmessage = (ev) => {
             const data = ev.data;
 
             // Текст → JSON state / служебная инфа
-            if (typeof data === "string") {
+            if (typeof data === 'string') {
                 try {
                     const msg = JSON.parse(data);
 
                     // Room joined successfully
-                    if (msg.type === "joined_room") {
+                    if (msg.type === 'joined_room') {
                         playerId = msg.playerId;
-                        console.log("[ClientLink] Joined room:", msg.roomCode, "Player ID:", playerId);
+                        console.log('[ClientLink] Joined room:', msg.roomCode, 'Player ID:', playerId);
                         if (window.__seedOnJoinedRoom) {
                             window.__seedOnJoinedRoom(msg);
                         }
                     }
 
                     // Error from server
-                    if (msg.type === "error") {
-                        console.error("[ClientLink] Server error:", msg.message);
+                    if (msg.type === 'error') {
+                        console.error('[ClientLink] Server error:', msg.message);
                         shouldReconnect = false; // Don't reconnect on error
                         if (window.__seedOnConnectionError) {
                             window.__seedOnConnectionError(msg.message);
@@ -312,18 +313,18 @@ export function startClientLink(onFrame, roomCode = null) {
                     }
 
                     // Host disconnected
-                    if (msg.type === "host_disconnected") {
-                        console.warn("[ClientLink] Host disconnected");
+                    if (msg.type === 'host_disconnected') {
+                        console.warn('[ClientLink] Host disconnected');
                         if (window.__seedOnHostDisconnected) {
                             window.__seedOnHostDisconnected();
                         }
                     }
 
-                    if (msg.type === "state" && msg.payload) {
+                    if (msg.type === 'state' && msg.payload) {
                         // Можно обработать позже если нужно
                     }
                 } catch (e) {
-                    console.warn("[ClientLink] parse error (string):", e);
+                    console.warn('[ClientLink] parse error (string):', e);
                 }
                 return;
             }
@@ -334,7 +335,7 @@ export function startClientLink(onFrame, roomCode = null) {
                 return;
             }
 
-            console.warn("[ClientLink] unknown message data type:", typeof data, data);
+            console.warn('[ClientLink] unknown message data type:', typeof data, data);
         };
     }
 
@@ -346,7 +347,7 @@ export function startClientLink(onFrame, roomCode = null) {
                 try {
                     socket.send(JSON.stringify(data));
                 } catch (e) {
-                    console.warn("[ClientLink] send error:", e);
+                    console.warn('[ClientLink] send error:', e);
                 }
             }
         },

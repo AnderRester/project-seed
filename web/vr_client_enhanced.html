@@ -126,6 +126,14 @@
         <p>Allow access to device orientation for VR tracking?</p>
         <button id="allowSensors">Enable VR Tracking</button>
     </div>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
 
     <script type="module">
         import './vr_client_enhanced.js';
@@ -154,18 +162,21 @@
         }
 
         allowBtn.addEventListener('click', () => {
-            if (typeof DeviceOrientationEvent !== 'undefined' &&
+            // Основной путь: прокидываем событие в vr_client_enhanced.js
+            if (window.vrRequestTracking) {
+                try {
+                    window.vrRequestTracking();
+                } catch (e) {
+                    console.error('vrRequestTracking error:', e);
+                }
+            } else if (typeof DeviceOrientationEvent !== 'undefined' &&
                 typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission()
-                    .then(permissionState => {
-                        if (permissionState === 'granted') {
-                            prompt.classList.remove('show');
-                        }
-                    })
-                    .catch(console.error);
-            } else {
-                prompt.classList.remove('show');
+                // Фоллбек на прямой вызов, если по какой-то причине модуль ещё не инициализирован
+                DeviceOrientationEvent.requestPermission().catch(console.error);
             }
+
+            // В любом случае прячем оверлей после клика
+            prompt.classList.remove('show');
         });
     </script>
 </body>

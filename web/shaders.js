@@ -119,7 +119,10 @@ export const grassVertexShader = `
     varying float vType;
     
     void main() {
-        vHeight = position.y;
+        // position.y будет в диапазоне [0..~12] после смещения геометрии,
+        // нормируем в [0..1], чтобы у основания стебель был стабилен.
+        float h = clamp(position.y / 12.0, 0.0, 1.0);
+        vHeight = h;
         vType = grassType;
         
         // Вариация цвета травы
@@ -144,7 +147,7 @@ export const grassVertexShader = `
         vec3 pos = position * scale;
         
         // Ветер влияет только на верхнюю часть
-        float windFactor = vHeight * vHeight; // квадратичный рост
+        float windFactor = h * h; // квадратичный рост только к вершине стебля
         float windTime = time + offset.x * 0.5 + offset.z * 0.3 + phase;
         
         // Направленный ветер

@@ -1,10 +1,10 @@
 // main3d-enhanced.js - Улучшенная версия с шейдерами, травой, облаками и UI песочницей
-import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import init, { SeedWorld } from "./pkg/seed_wasm.js";
-import { SandboxUI } from "./sandbox-ui.js";
-import { startHostLink } from "./remote_link.js";
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import init, { SeedWorld } from './pkg/seed_wasm.js';
+import { SandboxUI } from './sandbox-ui.js';
+import { startHostLink } from './remote_link.js';
 import {
     waterVertexShader,
     waterFragmentShader,
@@ -12,20 +12,37 @@ import {
     grassFragmentShader,
     cloudVertexShader,
     cloudFragmentShader,
-} from "./shaders.js";
+} from './shaders.js';
+
+// Некоторым браузерам/сценариям не нравится setPointerCapture в OrbitControls,
+// из-за чего иногда летит InvalidStateError. Оборачиваем глобально и глушим.
+if (typeof Element !== 'undefined' && Element.prototype.setPointerCapture) {
+    const __origSetPointerCapture = Element.prototype.setPointerCapture;
+    Element.prototype.setPointerCapture = function (pointerId) {
+        try {
+            return __origSetPointerCapture.call(this, pointerId);
+        } catch (e) {
+            console.warn('setPointerCapture error suppressed:', e?.message || e);
+        }
+    };
+}
 
 // Global variables
 let scene, camera, renderer, controls, fpControls;
 let terrainMesh, waterMesh, grassSystem, cloudSystem;
+let rockGroup, treeGroup, houseGroup;
 let world, worldConfig;
 let sandboxUI;
 let clock = new THREE.Clock();
+
+// VR head pose, получаемая из Rust world_snapshot
+let vrHeadQuat = null;
 
 // World data
 let heightData, rgbaData, mapSize;
 
 // FPS mode state
-let currentMode = "orbit"; // 'orbit' or 'fps'
+let currentMode = 'orbit'; // 'orbit' or 'fps'
 let moveState = {
     forward: false,
     backward: false,
@@ -56,7 +73,7 @@ async function init3DViewer() {
     await init();
 
     // Load config
-    const response = await fetch("./world-config.json");
+    const response = await fetch('./world-config.json');
     worldConfig = await response.json();
 
     // Setup scene
@@ -68,8 +85,11 @@ async function init3DViewer() {
     camera.position.set(0, 2000, 4000);
 
     // Setup renderer
-    renderer = new THREE.WebGLRenderer({ antialias: true });
+    // preserveDrawingBuffer: true нужен, чтобы renderer.domElement.toBlob
+    // на стороне хоста всегда получал актуальный кадр для стриминга.
+    renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
+    // Базовое значение pixelRatio: достаточно чётко, но без лишней нагрузки.
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -104,19 +124,20 @@ async function init3DViewer() {
     syncUIWithConfig();
 
     // Event handlers
-    window.addEventListener("resize", onWindowResize);
+    window.addEventListener('resize', onWindowResize);
     setupKeyboardControls();
     setupModeSwitch();
 
     // Connect to authoritative Rust server for multiplayer state
     setupWorldServerConnection();
 
-    // Old Node.js-based streaming/remote_link integration отключен.
+    // Запускаем хост-стриминг для телефонов через Rust /relay
+    setupStreaming();
 
     // Start animation
     animate();
 
-    console.log("3D Viewer initialized successfully");
+    console.log('3D Viewer initialized successfully');
 }
 
 function updateSceneAtmosphere() {
@@ -165,7 +186,7 @@ function setupLighting() {
 }
 
 async function generateWorld() {
-    console.log("Generating world...");
+    console.log('Generating world...');
 
     // Clear previous meshes
     if (terrainMesh) {
@@ -187,6 +208,36 @@ async function generateWorld() {
         scene.remove(cloudSystem);
         cloudSystem.geometry.dispose();
         cloudSystem.material.dispose();
+    }
+    if (rockGroup) {
+        scene.remove(rockGroup);
+        rockGroup.traverse((obj) => {
+            if (obj.isMesh) {
+                obj.geometry?.dispose();
+                obj.material?.dispose();
+            }
+        });
+        rockGroup = null;
+    }
+    if (treeGroup) {
+        scene.remove(treeGroup);
+        treeGroup.traverse((obj) => {
+            if (obj.isMesh) {
+                obj.geometry?.dispose();
+                obj.material?.dispose();
+            }
+        });
+        treeGroup = null;
+    }
+    if (houseGroup) {
+        scene.remove(houseGroup);
+        houseGroup.traverse((obj) => {
+            if (obj.isMesh) {
+                obj.geometry?.dispose();
+                obj.material?.dispose();
+            }
+        });
+        houseGroup = null;
     }
 
     // Update config from UI
@@ -223,10 +274,20 @@ async function generateWorld() {
     cloudSystem = createCloudSystem();
     scene.add(cloudSystem);
 
+    // Procedural props: rocks, trees, houses
+    rockGroup = createRocks();
+    scene.add(rockGroup);
+
+    treeGroup = createTrees();
+    scene.add(treeGroup);
+
+    houseGroup = createHouses();
+    scene.add(houseGroup);
+
     // Update atmosphere
     updateSceneAtmosphere();
 
-    console.log("World generated successfully");
+    console.log('World generated successfully');
 }
 
 function createTerrainMesh() {
@@ -255,7 +316,7 @@ function createTerrainMesh() {
     }
 
     geometry.attributes.position.needsUpdate = true;
-    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geometry.computeVertexNormals();
 
     const material = new THREE.MeshStandardMaterial({
@@ -310,6 +371,9 @@ function createGrassSystem() {
 
     const grassCount = Math.floor(mapSize * mapSize * density * 0.08);
     const grassGeometry = new THREE.PlaneGeometry(3, 12, 1, 5);
+    // Смещаем плоскость вверх, чтобы основание травинки было на земле,
+    // а не по центру, это убирает ощущение "червей".
+    grassGeometry.translate(0, 6, 0);
 
     const offsets = [];
     const scales = [];
@@ -346,15 +410,15 @@ function createGrassSystem() {
     const instancedGeometry = new THREE.InstancedBufferGeometry().copy(grassGeometry);
     instancedGeometry.instanceCount = offsets.length / 3;
 
-    instancedGeometry.setAttribute("offset", new THREE.InstancedBufferAttribute(new Float32Array(offsets), 3));
-    instancedGeometry.setAttribute("scale", new THREE.InstancedBufferAttribute(new Float32Array(scales), 1));
-    instancedGeometry.setAttribute("phase", new THREE.InstancedBufferAttribute(new Float32Array(phases), 1));
-    instancedGeometry.setAttribute("grassType", new THREE.InstancedBufferAttribute(new Float32Array(grassTypes), 1));
+    instancedGeometry.setAttribute('offset', new THREE.InstancedBufferAttribute(new Float32Array(offsets), 3));
+    instancedGeometry.setAttribute('scale', new THREE.InstancedBufferAttribute(new Float32Array(scales), 1));
+    instancedGeometry.setAttribute('phase', new THREE.InstancedBufferAttribute(new Float32Array(phases), 1));
+    instancedGeometry.setAttribute('grassType', new THREE.InstancedBufferAttribute(new Float32Array(grassTypes), 1));
 
-    const windPattern = worldConfig.environment?.climate?.windGlobalPattern || "westerlies";
+    const windPattern = worldConfig.environment?.climate?.windGlobalPattern || 'westerlies';
     let windDir = new THREE.Vector3(1, 0, 0);
-    if (windPattern === "trade-winds") windDir.set(1, 0, -0.5).normalize();
-    if (windPattern === "polar-easterlies") windDir.set(-1, 0, 0.3).normalize();
+    if (windPattern === 'trade-winds') windDir.set(1, 0, -0.5).normalize();
+    if (windPattern === 'polar-easterlies') windDir.set(-1, 0, 0.3).normalize();
 
     const material = new THREE.ShaderMaterial({
         vertexShader: grassVertexShader,
@@ -397,13 +461,13 @@ function createCloudSystem() {
     const instancedGeometry = new THREE.InstancedBufferGeometry().copy(cloudGeometry);
     instancedGeometry.instanceCount = offsets.length / 3;
 
-    instancedGeometry.setAttribute("offset", new THREE.InstancedBufferAttribute(new Float32Array(offsets), 3));
-    instancedGeometry.setAttribute("scale", new THREE.InstancedBufferAttribute(new Float32Array(scales), 1));
-    instancedGeometry.setAttribute("phase", new THREE.InstancedBufferAttribute(new Float32Array(phases), 1));
+    instancedGeometry.setAttribute('offset', new THREE.InstancedBufferAttribute(new Float32Array(offsets), 3));
+    instancedGeometry.setAttribute('scale', new THREE.InstancedBufferAttribute(new Float32Array(scales), 1));
+    instancedGeometry.setAttribute('phase', new THREE.InstancedBufferAttribute(new Float32Array(phases), 1));
 
-    const windPattern = worldConfig.environment?.climate?.windGlobalPattern || "westerlies";
+    const windPattern = worldConfig.environment?.climate?.windGlobalPattern || 'westerlies';
     let windDir = new THREE.Vector3(1, 0, 0);
-    if (windPattern === "trade-winds") windDir.set(1, 0, -0.5).normalize();
+    if (windPattern === 'trade-winds') windDir.set(1, 0, -0.5).normalize();
 
     const material = new THREE.ShaderMaterial({
         vertexShader: cloudVertexShader,
@@ -423,21 +487,176 @@ function createCloudSystem() {
     return mesh;
 }
 
+function createRocks() {
+    const group = new THREE.Group();
+    if (!heightData || !mapSize) return group;
+
+    const terrainScale = 12000;
+    const heightScale = 1200;
+
+    const rockGeometry = new THREE.IcosahedronGeometry(20, 1);
+    const rockMaterial = new THREE.MeshStandardMaterial({
+        color: 0x777777,
+        roughness: 0.9,
+        metalness: 0.1,
+    });
+
+    const rockCount = 250;
+    for (let i = 0; i < rockCount; i++) {
+        const x = (Math.random() - 0.5) * terrainScale;
+        const z = (Math.random() - 0.5) * terrainScale;
+
+        const u = (x / terrainScale + 0.5) * (mapSize - 1);
+        const v = (z / terrainScale + 0.5) * (mapSize - 1);
+        const iu = Math.floor(u);
+        const iv = Math.floor(v);
+        const idx = iv * mapSize + iu;
+        if (idx < 0 || idx >= heightData.length) continue;
+
+        const y = heightData[idx] * heightScale;
+
+        // Не ставим камни под водой
+        if (y < (worldConfig.seaLevel || 0.11) * heightScale + 5) continue;
+
+        const rock = new THREE.Mesh(rockGeometry, rockMaterial.clone());
+        rock.position.set(x, y + 4, z);
+        const s = 0.6 + Math.random() * 1.8;
+        rock.scale.setScalar(s);
+        rock.rotation.y = Math.random() * Math.PI * 2;
+        rock.castShadow = true;
+        rock.receiveShadow = true;
+        group.add(rock);
+    }
+
+    return group;
+}
+
+function createTrees() {
+    const group = new THREE.Group();
+    if (!heightData || !mapSize) return group;
+
+    const terrainScale = 12000;
+    const heightScale = 1200;
+
+    const trunkGeometry = new THREE.CylinderGeometry(4, 6, 40, 6);
+    const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x4b2e19, roughness: 0.9 });
+    const crownGeometry = new THREE.ConeGeometry(25, 55, 8);
+    const crownMaterial = new THREE.MeshStandardMaterial({ color: 0x1d5f2a, roughness: 0.6 });
+
+    const treeCount = 180;
+    for (let i = 0; i < treeCount; i++) {
+        const x = (Math.random() - 0.5) * terrainScale;
+        const z = (Math.random() - 0.5) * terrainScale;
+
+        const u = (x / terrainScale + 0.5) * (mapSize - 1);
+        const v = (z / terrainScale + 0.5) * (mapSize - 1);
+        const iu = Math.floor(u);
+        const iv = Math.floor(v);
+        const idx = iv * mapSize + iu;
+        if (idx < 0 || idx >= heightData.length) continue;
+
+        const y = heightData[idx] * heightScale;
+
+        const seaY = (worldConfig.seaLevel || 0.11) * heightScale;
+        // Деревья — чуть выше уровня моря и не на горных вершинах
+        if (y < seaY + 20 || y > seaY + 400) continue;
+
+        const tree = new THREE.Group();
+
+        const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial.clone());
+        trunk.position.set(0, 20, 0);
+        trunk.castShadow = true;
+        trunk.receiveShadow = true;
+        tree.add(trunk);
+
+        const crown = new THREE.Mesh(crownGeometry, crownMaterial.clone());
+        crown.position.set(0, 55, 0);
+        crown.castShadow = true;
+        crown.receiveShadow = true;
+        tree.add(crown);
+
+        const s = 0.8 + Math.random() * 0.9;
+        tree.scale.setScalar(s);
+        tree.position.set(x, y, z);
+        tree.rotation.y = Math.random() * Math.PI * 2;
+
+        group.add(tree);
+    }
+
+    return group;
+}
+
+function createHouses() {
+    const group = new THREE.Group();
+    if (!heightData || !mapSize) return group;
+
+    const terrainScale = 12000;
+    const heightScale = 1200;
+
+    const baseGeometry = new THREE.BoxGeometry(60, 40, 60);
+    const baseMaterial = new THREE.MeshStandardMaterial({ color: 0xd0c7b5, roughness: 0.85 });
+    const roofGeometry = new THREE.ConeGeometry(50, 35, 4);
+    const roofMaterial = new THREE.MeshStandardMaterial({ color: 0x8b3a2a, roughness: 0.7 });
+
+    const houseCount = 40;
+    for (let i = 0; i < houseCount; i++) {
+        const x = (Math.random() - 0.5) * (terrainScale * 0.7);
+        const z = (Math.random() - 0.5) * (terrainScale * 0.7);
+
+        const u = (x / terrainScale + 0.5) * (mapSize - 1);
+        const v = (z / terrainScale + 0.5) * (mapSize - 1);
+        const iu = Math.floor(u);
+        const iv = Math.floor(v);
+        const idx = iv * mapSize + iu;
+        if (idx < 0 || idx >= heightData.length) continue;
+
+        const y = heightData[idx] * heightScale;
+        const seaY = (worldConfig.seaLevel || 0.11) * heightScale;
+
+        // Дома ставим в относительно ровных прибрежных областях
+        if (y < seaY + 10 || y > seaY + 150) continue;
+
+        const house = new THREE.Group();
+
+        const base = new THREE.Mesh(baseGeometry, baseMaterial.clone());
+        base.position.set(0, 20, 0);
+        base.castShadow = true;
+        base.receiveShadow = true;
+        house.add(base);
+
+        const roof = new THREE.Mesh(roofGeometry, roofMaterial.clone());
+        roof.position.set(0, 40, 0);
+        roof.rotation.y = Math.PI / 4;
+        roof.castShadow = true;
+        roof.receiveShadow = true;
+        house.add(roof);
+
+        const s = 0.7 + Math.random() * 0.6;
+        house.scale.setScalar(s);
+        house.position.set(x, y, z);
+        house.rotation.y = Math.random() * Math.PI * 2;
+
+        group.add(house);
+    }
+
+    return group;
+}
+
 function handleParamChange(paramName, value) {
     // Immediate visual updates (no regeneration needed)
-    if (paramName === "cloudDensity" && cloudSystem && cloudSystem.material.uniforms) {
+    if (paramName === 'cloudDensity' && cloudSystem && cloudSystem.material.uniforms) {
         cloudSystem.material.uniforms.density.value = value;
     }
 
-    if (paramName === "waterWaveHeight" && waterMesh && waterMesh.material.uniforms) {
+    if (paramName === 'waterWaveHeight' && waterMesh && waterMesh.material.uniforms) {
         waterMesh.material.uniforms.waveHeight.value = value;
     }
 
-    if (paramName === "waterOpacity" && waterMesh && waterMesh.material.uniforms) {
+    if (paramName === 'waterOpacity' && waterMesh && waterMesh.material.uniforms) {
         waterMesh.material.uniforms.opacity.value = value;
     }
 
-    if (paramName === "triggerCatastrophe") {
+    if (paramName === 'triggerCatastrophe') {
         console.log(`Catastrophe triggered: ${value}`);
         triggerCatastrophe(value);
     }
@@ -445,7 +664,7 @@ function handleParamChange(paramName, value) {
 
 function triggerCatastrophe(type) {
     if (!terrainMesh || !terrainMesh.geometry) {
-        console.warn("[Catastrophe] No terrain mesh available");
+        console.warn('[Catastrophe] No terrain mesh available');
         return;
     }
 
@@ -459,7 +678,7 @@ function triggerCatastrophe(type) {
     console.log(`[Catastrophe] ${type} at (${epicenterX.toFixed(2)}, ${epicenterZ.toFixed(2)})`);
 
     switch (type) {
-        case "earthquake":
+        case 'earthquake':
             // Deform terrain in waves from epicenter
             for (let i = 0; i < vertexCount; i++) {
                 const x = positions[i * 3];
@@ -475,10 +694,10 @@ function triggerCatastrophe(type) {
 
                 positions[i * 3 + 1] += wave * falloff;
             }
-            console.log("[Catastrophe] Earthquake waves applied");
+            console.log('[Catastrophe] Earthquake waves applied');
             break;
 
-        case "volcano":
+        case 'volcano':
             // Create volcanic cone at epicenter
             for (let i = 0; i < vertexCount; i++) {
                 const x = positions[i * 3];
@@ -495,10 +714,10 @@ function triggerCatastrophe(type) {
                     positions[i * 3 + 1] += height;
                 }
             }
-            console.log("[Catastrophe] Volcano created");
+            console.log('[Catastrophe] Volcano created');
             break;
 
-        case "meteor":
+        case 'meteor':
             // Create impact crater
             for (let i = 0; i < vertexCount; i++) {
                 const x = positions[i * 3];
@@ -522,7 +741,7 @@ function triggerCatastrophe(type) {
                     positions[i * 3 + 1] += rimHeight;
                 }
             }
-            console.log("[Catastrophe] Meteor crater formed");
+            console.log('[Catastrophe] Meteor crater formed');
             break;
     }
 
@@ -532,9 +751,9 @@ function triggerCatastrophe(type) {
 
     // Visual feedback
     const message = {
-        earthquake: "💥 Earthquake! Terrain trembles and shifts",
-        volcano: "🌋 Volcanic eruption! New mountain formed",
-        meteor: "☄️ Meteor impact! Massive crater created",
+        earthquake: '💥 Earthquake! Terrain trembles and shifts',
+        volcano: '🌋 Volcanic eruption! New mountain formed',
+        meteor: '☄️ Meteor impact! Massive crater created',
     };
 
     console.log(`[Catastrophe] ${message[type]}`);
@@ -543,11 +762,11 @@ function triggerCatastrophe(type) {
 function syncUIWithConfig() {
     if (!sandboxUI) return;
 
-    sandboxUI.updateParam("seaLevel", worldConfig.seaLevel || 0.11);
-    sandboxUI.updateParam("continentalScale", worldConfig.geology?.heightmap?.continentalScaleKm || 4000);
-    sandboxUI.updateParam("mountainHeight", worldConfig.geology?.heightmap?.mountainAmplitudeMeters || 4000);
-    sandboxUI.updateParam("temperature", worldConfig.environment?.atmosphere?.baseTemperatureC || 25);
-    sandboxUI.updateParam("humidity", worldConfig.environment?.atmosphere?.humidityGlobalMean || 0.5);
+    sandboxUI.updateParam('seaLevel', worldConfig.seaLevel || 0.11);
+    sandboxUI.updateParam('continentalScale', worldConfig.geology?.heightmap?.continentalScaleKm || 4000);
+    sandboxUI.updateParam('mountainHeight', worldConfig.geology?.heightmap?.mountainAmplitudeMeters || 4000);
+    sandboxUI.updateParam('temperature', worldConfig.environment?.atmosphere?.baseTemperatureC || 25);
+    sandboxUI.updateParam('humidity', worldConfig.environment?.atmosphere?.humidityGlobalMean || 0.5);
 }
 
 function animate() {
@@ -595,14 +814,27 @@ function animate() {
     }
 
     // Update FPS movement
-    if (currentMode === "fps" && fpControls.isLocked) {
+    if (currentMode === 'fps' && fpControls.isLocked) {
         updateFPSMovement(delta);
     }
 
     // Update other players' avatars if any
     updateOtherPlayers(delta);
 
-    controls.update();
+    // Если есть VR-клиент, используем его кватернион для ориентации камеры
+    if (vrHeadQuat) {
+        camera.quaternion.copy(vrHeadQuat);
+    }
+
+    // OrbitControls должны работать только в орбитальном режиме и когда
+    // мы не принудительно задаём ориентацию от VR-клиента.
+    if (controls) {
+        controls.enabled = currentMode === 'orbit' && !vrHeadQuat;
+        if (controls.enabled) {
+            controls.update();
+        }
+    }
+
     renderer.render(scene, camera);
 }
 
@@ -614,27 +846,27 @@ function onWindowResize() {
 
 // ========== FPS CONTROLS ==========
 function setupKeyboardControls() {
-    window.addEventListener("keydown", (e) => {
-        if (currentMode !== "fps" || !fpControls.isLocked) return;
+    window.addEventListener('keydown', (e) => {
+        if (currentMode !== 'fps' || !fpControls.isLocked) return;
 
         switch (e.code) {
-            case "KeyW":
-            case "ArrowUp":
+            case 'KeyW':
+            case 'ArrowUp':
                 moveState.forward = true;
                 break;
-            case "KeyS":
-            case "ArrowDown":
+            case 'KeyS':
+            case 'ArrowDown':
                 moveState.backward = true;
                 break;
-            case "KeyA":
-            case "ArrowLeft":
+            case 'KeyA':
+            case 'ArrowLeft':
                 moveState.left = true;
                 break;
-            case "KeyD":
-            case "ArrowRight":
+            case 'KeyD':
+            case 'ArrowRight':
                 moveState.right = true;
                 break;
-            case "Space":
+            case 'Space':
                 if (isGrounded) {
                     // Dynamic jump height from sandbox UI
                     const params = sandboxUI?.getParams() || {};
@@ -643,35 +875,35 @@ function setupKeyboardControls() {
                     isGrounded = false;
                 }
                 break;
-            case "ShiftLeft":
-            case "ShiftRight":
+            case 'ShiftLeft':
+            case 'ShiftRight':
                 isSprinting = true;
                 break;
         }
     });
 
-    window.addEventListener("keyup", (e) => {
-        if (currentMode !== "fps") return;
+    window.addEventListener('keyup', (e) => {
+        if (currentMode !== 'fps') return;
 
         switch (e.code) {
-            case "KeyW":
-            case "ArrowUp":
+            case 'KeyW':
+            case 'ArrowUp':
                 moveState.forward = false;
                 break;
-            case "KeyS":
-            case "ArrowDown":
+            case 'KeyS':
+            case 'ArrowDown':
                 moveState.backward = false;
                 break;
-            case "KeyA":
-            case "ArrowLeft":
+            case 'KeyA':
+            case 'ArrowLeft':
                 moveState.left = false;
                 break;
-            case "KeyD":
-            case "ArrowRight":
+            case 'KeyD':
+            case 'ArrowRight':
                 moveState.right = false;
                 break;
-            case "ShiftLeft":
-            case "ShiftRight":
+            case 'ShiftLeft':
+            case 'ShiftRight':
                 isSprinting = false;
                 break;
         }
@@ -680,28 +912,38 @@ function setupKeyboardControls() {
 
 function setupModeSwitch() {
     // ESC для выхода из FPS
-    fpControls.addEventListener("unlock", () => {
-        if (currentMode === "fps") {
+    fpControls.addEventListener('unlock', () => {
+        if (currentMode === 'fps') {
             switchToOrbit();
         }
     });
 
     // Numpad для переключения режимов
-    window.addEventListener("keydown", (e) => {
-        if (e.code === "Numpad0") {
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Numpad0') {
             e.preventDefault();
             switchToOrbit();
-        } else if (e.code === "Numpad1") {
+        } else if (e.code === 'Numpad1') {
             e.preventDefault();
             switchToFPS();
         }
     });
 
-    console.log("[Controls] Mode switch: Numpad0=Orbit, Numpad1=FPS");
+    // Дополнительно: клик по канвасу в FPS-режиме захватывает указатель,
+    // как в стандартных примерах three.js с PointerLockControls.
+    if (renderer && renderer.domElement) {
+        renderer.domElement.addEventListener('click', () => {
+            if (currentMode === 'fps' && !fpControls.isLocked) {
+                fpControls.lock();
+            }
+        });
+    }
+
+    console.log('[Controls] Mode switch: Numpad0=Orbit, Numpad1=FPS');
 }
 
 function switchToFPS() {
-    currentMode = "fps";
+    currentMode = 'fps';
     controls.enabled = false;
     fpControls.lock();
 
@@ -709,11 +951,11 @@ function switchToFPS() {
     const startHeight = 200;
     camera.position.y = startHeight;
 
-    console.log("Switched to FPS mode");
+    console.log('Switched to FPS mode');
 }
 
 function switchToOrbit() {
-    currentMode = "orbit";
+    currentMode = 'orbit';
     fpControls.unlock();
     controls.enabled = true;
 
@@ -721,7 +963,7 @@ function switchToOrbit() {
     moveState = { forward: false, backward: false, left: false, right: false };
     verticalVelocity = 0;
 
-    console.log("Switched to Orbit mode");
+    console.log('Switched to Orbit mode');
 }
 
 function updateFPSMovement(delta) {
@@ -809,21 +1051,21 @@ function sampleHeightAt(worldX, worldZ) {
 
 function setupWorldServerConnection() {
     if (worldWs && worldWs.readyState === WebSocket.OPEN) {
-        console.log("[WorldServer] Already connected");
+        console.log('[WorldServer] Already connected');
         return;
     }
 
     worldClientId = `pc-${Math.random().toString(36).slice(2, 8)}`;
-    console.log("[WorldServer] Connecting as", worldClientId);
+    console.log('[WorldServer] Connecting as', worldClientId);
 
-    worldWs = new WebSocket("ws://localhost:9000/ws");
+    worldWs = new WebSocket('ws://localhost:9000/ws');
 
     worldWs.onopen = () => {
-        console.log("[WorldServer] Connected, sending join");
+        console.log('[WorldServer] Connected, sending join');
         const joinMsg = {
-            type: "join",
+            type: 'join',
             client_id: worldClientId,
-            role: "pc",
+            role: 'pc',
         };
         worldWs.send(JSON.stringify(joinMsg));
     };
@@ -831,24 +1073,24 @@ function setupWorldServerConnection() {
     worldWs.onmessage = (event) => {
         try {
             const msg = JSON.parse(event.data);
-            if (msg.type === "joined") {
-                console.log("[WorldServer] Joined acknowledged as", msg.client_id, "role", msg.role);
-            } else if (msg.type === "world_snapshot") {
+            if (msg.type === 'joined') {
+                console.log('[WorldServer] Joined acknowledged as', msg.client_id, 'role', msg.role);
+            } else if (msg.type === 'world_snapshot') {
                 handleWorldSnapshot(msg);
-            } else if (msg.type === "error") {
-                console.warn("[WorldServer] Error:", msg.message);
+            } else if (msg.type === 'error') {
+                console.warn('[WorldServer] Error:', msg.message);
             }
         } catch (e) {
-            console.warn("[WorldServer] Failed to parse message:", e, event.data);
+            console.warn('[WorldServer] Failed to parse message:', e, event.data);
         }
     };
 
     worldWs.onerror = (err) => {
-        console.error("[WorldServer] WebSocket error", err);
+        console.error('[WorldServer] WebSocket error', err);
     };
 
     worldWs.onclose = () => {
-        console.warn("[WorldServer] Disconnected, will retry in 3s");
+        console.warn('[WorldServer] Disconnected, will retry in 3s');
         worldWs = null;
         setTimeout(setupWorldServerConnection, 3000);
     };
@@ -866,7 +1108,7 @@ function sendOwnInputToWorldServer(delta) {
     if (move.x === 0 && move.z === 0) return;
 
     const msg = {
-        type: "input",
+        type: 'input',
         client_id: worldClientId,
         dx: move.x * 1000,
         dy: 0,
@@ -876,7 +1118,7 @@ function sendOwnInputToWorldServer(delta) {
     try {
         worldWs.send(JSON.stringify(msg));
     } catch (e) {
-        console.warn("[WorldServer] Failed to send input:", e);
+        console.warn('[WorldServer] Failed to send input:', e);
     }
 }
 
@@ -893,7 +1135,7 @@ function handleWorldSnapshot(snapshot) {
         let obj = otherPlayers.get(p.id);
         if (!obj) {
             const geom = new THREE.BoxGeometry(40, 80, 40);
-            const mat = new THREE.MeshStandardMaterial({ color: p.role === "vr" ? 0xff8800 : 0x00aaff });
+            const mat = new THREE.MeshStandardMaterial({ color: p.role === 'vr' ? 0xff8800 : 0x00aaff });
             obj = new THREE.Mesh(geom, mat);
             obj.castShadow = true;
             obj.receiveShadow = true;
@@ -904,10 +1146,18 @@ function handleWorldSnapshot(snapshot) {
         obj.position.set(p.x, p.y, p.z);
 
         if (p.head_pos && p.head_quat) {
-            // Если это VR-клиент, используем head_pose
+            // Если это VR-клиент и он несёт голову, используем позу для его аватара
             obj.position.set(p.head_pos[0], p.head_pos[1], p.head_pos[2]);
             const q = new THREE.Quaternion(p.head_quat[0], p.head_quat[1], p.head_quat[2], p.head_quat[3]);
             obj.quaternion.copy(q);
+
+            // А также сохраняем последний кватернион VR-клиента для камеры.
+            // Позицию камеры больше не трогаем, чтобы не "утыкаться" в землю
+            // и не ломать существующее управление.
+            if (p.role === 'vr') {
+                console.log('[WorldServer] VR snapshot for', p.id, 'pos=', p.head_pos, 'quat=', p.head_quat);
+                vrHeadQuat = q;
+            }
         }
     }
 
@@ -930,8 +1180,8 @@ function updateOtherPlayers(_delta) {
 let roomInfoPanel = null;
 
 function createRoomInfoPanel() {
-    const panel = document.createElement("div");
-    panel.id = "roomInfoPanel";
+    const panel = document.createElement('div');
+    panel.id = 'roomInfoPanel';
     panel.style.cssText = `
         position: fixed;
         top: 80px;
@@ -975,8 +1225,8 @@ function updateRoomInfo(roomCode, playerCount) {
         roomInfoPanel = createRoomInfoPanel();
     }
 
-    const roomCodeEl = document.getElementById("roomCode");
-    const playerCountEl = document.getElementById("playerCount");
+    const roomCodeEl = document.getElementById('roomCode');
+    const playerCountEl = document.getElementById('playerCount');
 
     if (roomCode && roomCodeEl) {
         roomCodeEl.textContent = roomCode;
@@ -991,14 +1241,14 @@ function updateRoomInfo(roomCode, playerCount) {
 let isTransferringWorldData = false;
 
 function setupStreaming() {
-    console.log("[Streaming] setupStreaming called, wsHost=", wsHost);
+    console.log('[Streaming] setupStreaming called, wsHost=', wsHost);
 
     if (wsHost) {
-        console.log("[Streaming] Already connected, skipping...");
+        console.log('[Streaming] Already connected, skipping...');
         return;
     }
 
-    console.log("[Streaming] Creating new host connection...");
+    console.log('[Streaming] Creating new host connection...');
 
     wsHost = startHostLink(
         () => {
@@ -1016,20 +1266,20 @@ function setupStreaming() {
         },
         (status) => {
             // onStatusChange
-            console.log("[Streaming] Host status:", status);
-            if (status === "disconnected") {
+            console.log('[Streaming] Host status:', status);
+            if (status === 'disconnected') {
                 if (isTransferringWorldData) {
-                    console.error("[Main3D] ❌ Connection lost DURING world data transfer - DO NOT RECONNECT");
+                    console.error('[Main3D] ❌ Connection lost DURING world data transfer - DO NOT RECONNECT');
                     isTransferringWorldData = false;
                     wsHost = null;
                     return;
                 }
-                console.warn("[Main3D] WebSocket disconnected, attempting reconnect in 2s...");
+                console.warn('[Main3D] WebSocket disconnected, attempting reconnect in 2s...');
                 wsHost = null; // Reset reference
                 // Reconnect after delay
                 setTimeout(() => {
                     if (!wsHost) {
-                        console.log("[Main3D] Reconnecting to streaming server...");
+                        console.log('[Main3D] Reconnecting to streaming server...');
                         setupStreaming();
                     }
                 }, 2000);
@@ -1039,13 +1289,13 @@ function setupStreaming() {
 
     // Global callback for room created
     window.__seedOnRoomCreated = (roomCode) => {
-        console.log("[Main3D] 🎮 Room created:", roomCode);
+        console.log('[Main3D] 🎮 Room created:', roomCode);
         updateRoomInfo(roomCode, 0);
     };
 
     // Global callback for player updates
     window.__seedOnPlayerUpdate = (msg) => {
-        console.log("[Main3D] Player update:", msg);
+        console.log('[Main3D] Player update:', msg);
         updateRoomInfo(wsHost.roomCode, msg.totalPlayers);
     };
 
@@ -1055,11 +1305,11 @@ function setupStreaming() {
         if (heightData && wsHost) {
             sendWorldDataToPlayers();
         } else {
-            console.warn("[Main3D] Cannot send world sync - data not ready");
+            console.warn('[Main3D] Cannot send world sync - data not ready');
         }
     };
 
-    console.log("[Streaming] Host connection created, wsHost=", wsHost);
+    console.log('[Streaming] Host connection created, wsHost=', wsHost);
 
     // Send frames to clients at 30 FPS (skip when world data is in-flight or buffer is high)
     setInterval(() => {
@@ -1080,20 +1330,20 @@ function setupStreaming() {
                     window.__seedSendFrame(blob);
                 }
             },
-            "image/jpeg",
+            'image/jpeg',
             0.75
         );
     }, 33); // ~30 FPS
 }
 
 function handleClientMessage(msg) {
-    if (msg.type === "orientation" && msg.payload) {
+    if (msg.type === 'orientation' && msg.payload) {
         // Обработка ориентации от мобильного клиента
         remoteOrientation = msg.payload;
     }
 
     // Update movement from mobile controls
-    if (msg.movement && currentMode === "fps") {
+    if (msg.movement && currentMode === 'fps') {
         moveState.forward = msg.movement.forward || false;
         moveState.backward = msg.movement.backward || false;
         moveState.left = msg.movement.left || false;
@@ -1117,22 +1367,22 @@ function sendFrameToClients() {
                 console.log(`[Streaming] Sending frame blob: ${blob.size} bytes`);
                 window.__seedSendFrame(blob);
             } else {
-                console.warn("[Streaming] toBlob returned null");
+                console.warn('[Streaming] toBlob returned null');
             }
         },
-        "image/jpeg",
+        'image/jpeg',
         0.75
     );
 }
 
 function sendWorldDataToPlayers() {
     if (!wsHost || !heightData) {
-        console.warn("[Main3D] Cannot send world data: wsHost or heightData missing");
+        console.warn('[Main3D] Cannot send world data: wsHost or heightData missing');
         return;
     }
 
     const worldSync = {
-        type: "world_sync",
+        type: 'world_sync',
         mapSize: mapSize,
         heightData: Array.from(heightData),
         terrainScale: 12000,
@@ -1144,7 +1394,7 @@ function sendWorldDataToPlayers() {
     console.log(`[Main3D] Sending world data: ${(payload.length / 1024).toFixed(2)} KB (full ${mapSize}x${mapSize})`);
 
     if (!wsHost.isConnected) {
-        console.warn("[Main3D] ❌ Failed to send - connection not ready");
+        console.warn('[Main3D] ❌ Failed to send - connection not ready');
         return;
     }
 
@@ -1161,12 +1411,12 @@ function sendWorldDataToPlayers() {
     isTransferringWorldData = true;
     window.__pauseStateUpdates = true; // Stop sending camera state during world transfer
     window.__pauseFrameStreaming = true; // Stop sending video frames during transfer to keep buffer low
-    console.log("[Main3D] 🔒 Transfer started - reconnection disabled");
+    console.log('[Main3D] 🔒 Transfer started - reconnection disabled');
 
     // Send start message
     wsHost.send(
         JSON.stringify({
-            type: "world_sync_start",
+            type: 'world_sync_start',
             totalChunks: chunks.length,
             totalSize: payload.length,
         })
@@ -1177,7 +1427,7 @@ function sendWorldDataToPlayers() {
     const sendNextChunk = () => {
         // Check if connection still alive
         if (!wsHost || !wsHost.isConnected) {
-            console.error("[Main3D] ❌ Connection lost during chunk transfer");
+            console.error('[Main3D] ❌ Connection lost during chunk transfer');
             isTransferringWorldData = false;
             window.__pauseStateUpdates = false; // Resume camera state updates
             window.__pauseFrameStreaming = false; // Resume video frames
@@ -1186,18 +1436,18 @@ function sendWorldDataToPlayers() {
 
         if (chunkIndex >= chunks.length) {
             // All chunks sent, now send end message
-            wsHost.send(JSON.stringify({ type: "world_sync_end" }));
+            wsHost.send(JSON.stringify({ type: 'world_sync_end' }));
             // Keep socket warm right after transfer finishes
             try {
-                wsHost.send(JSON.stringify({ type: "heartbeat" }));
+                wsHost.send(JSON.stringify({ type: 'heartbeat' }));
             } catch (err) {
-                console.warn("[Main3D] Post-transfer heartbeat failed:", err);
+                console.warn('[Main3D] Post-transfer heartbeat failed:', err);
             }
 
             // Wait for buffer to flush before resuming normal operation
             const waitForBufferFlush = () => {
                 if (!wsHost || !wsHost.isConnected || !wsHost.socket) {
-                    console.warn("[Main3D] ⚠️ Connection lost during final flush");
+                    console.warn('[Main3D] ⚠️ Connection lost during final flush');
                     isTransferringWorldData = false;
                     window.__pauseStateUpdates = false; // Resume camera state updates
                     window.__pauseFrameStreaming = false; // Resume video frames
@@ -1232,17 +1482,17 @@ function sendWorldDataToPlayers() {
         // Send heartbeat periodically to keep connection alive during long transfer
         if (chunkIndex % 5 === 0 && chunkIndex > 0) {
             try {
-                wsHost.send(JSON.stringify({ type: "heartbeat" }));
+                wsHost.send(JSON.stringify({ type: 'heartbeat' }));
                 console.log(`[Main3D] 💓 Heartbeat sent during transfer (chunk ${chunkIndex}/${chunks.length})`);
             } catch (err) {
-                console.warn("[Main3D] Failed to send heartbeat:", err);
+                console.warn('[Main3D] Failed to send heartbeat:', err);
             }
         }
 
         try {
             wsHost.send(
                 JSON.stringify({
-                    type: "world_sync_chunk",
+                    type: 'world_sync_chunk',
                     index: chunkIndex,
                     data: chunk,
                 })
