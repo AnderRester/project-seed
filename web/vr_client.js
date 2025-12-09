@@ -1,47 +1,47 @@
 // vr_client.js (телефон / client)
-import { startClientLink } from './remote_link.js';
+import { startClientLink } from "./remote_link.js";
 
 async function runVRClient() {
     // ---------- STATUS ----------
-    let statusEl = document.getElementById('status');
+    let statusEl = document.getElementById("status");
     if (!statusEl) {
-        statusEl = document.createElement('div');
-        statusEl.id = 'status';
-        statusEl.style.position = 'fixed';
-        statusEl.style.top = '10px';
-        statusEl.style.right = '10px';
-        statusEl.style.padding = '6px 10px';
-        statusEl.style.borderRadius = '6px';
-        statusEl.style.background = 'rgba(0,0,0,0.5)';
-        statusEl.style.color = '#fff';
-        statusEl.style.fontFamily = 'system-ui, sans-serif';
-        statusEl.style.fontSize = '12px';
-        statusEl.style.zIndex = '30';
-        statusEl.style.pointerEvents = 'none';
+        statusEl = document.createElement("div");
+        statusEl.id = "status";
+        statusEl.style.position = "fixed";
+        statusEl.style.top = "10px";
+        statusEl.style.right = "10px";
+        statusEl.style.padding = "6px 10px";
+        statusEl.style.borderRadius = "6px";
+        statusEl.style.background = "rgba(0,0,0,0.5)";
+        statusEl.style.color = "#fff";
+        statusEl.style.fontFamily = "system-ui, sans-serif";
+        statusEl.style.fontSize = "12px";
+        statusEl.style.zIndex = "30";
+        statusEl.style.pointerEvents = "none";
         document.body.appendChild(statusEl);
     }
 
     // ---------- CANVAS (STEREO FRAME) ----------
-    let canvas = document.getElementById('vrCanvas');
+    let canvas = document.getElementById("vrCanvas");
     if (!canvas) {
-        canvas = document.createElement('canvas');
-        canvas.id = 'vrCanvas';
+        canvas = document.createElement("canvas");
+        canvas.id = "vrCanvas";
         document.body.appendChild(canvas);
     }
-    canvas.style.position = 'fixed';
-    canvas.style.top = '0';
-    canvas.style.left = '0';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
-    canvas.style.zIndex = '0';
-    canvas.style.display = 'block';
+    canvas.style.position = "fixed";
+    canvas.style.top = "0";
+    canvas.style.left = "0";
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    canvas.style.zIndex = "0";
+    canvas.style.display = "block";
 
-    document.body.style.margin = '0';
-    document.body.style.padding = '0';
-    document.body.style.backgroundColor = '#000';
-    document.documentElement.style.backgroundColor = '#000';
+    document.body.style.margin = "0";
+    document.body.style.padding = "0";
+    document.body.style.backgroundColor = "#000";
+    document.documentElement.style.backgroundColor = "#000";
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
 
     function resizeCanvas() {
         const w = window.innerWidth;
@@ -50,83 +50,83 @@ async function runVRClient() {
         canvas.height = h;
     }
     resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener("resize", resizeCanvas);
 
     // ---------- SAO-HUD ROOT ----------
-    const hudRoot = document.createElement('div');
-    hudRoot.style.position = 'fixed';
-    hudRoot.style.inset = '0';
-    hudRoot.style.pointerEvents = 'none';
-    hudRoot.style.zIndex = '20';
+    const hudRoot = document.createElement("div");
+    hudRoot.style.position = "fixed";
+    hudRoot.style.inset = "0";
+    hudRoot.style.pointerEvents = "none";
+    hudRoot.style.zIndex = "20";
     document.body.appendChild(hudRoot);
 
     // ===== HP BAR (SAO-STYLE) =====
-    const hpWrapper = document.createElement('div');
-    hpWrapper.style.position = 'absolute';
-    hpWrapper.style.top = '4%';
-    hpWrapper.style.left = '3%';
+    const hpWrapper = document.createElement("div");
+    hpWrapper.style.position = "absolute";
+    hpWrapper.style.top = "4%";
+    hpWrapper.style.left = "3%";
 
     // фикс. размер + адаптация под ширину экрана
-    hpWrapper.style.width = '320px';
-    hpWrapper.style.maxWidth = '50vw';
-    hpWrapper.style.aspectRatio = '6 / 1'; // держим форму
-    hpWrapper.style.height = 'auto';
+    hpWrapper.style.width = "320px";
+    hpWrapper.style.maxWidth = "50vw";
+    hpWrapper.style.aspectRatio = "6 / 1"; // держим форму
+    hpWrapper.style.height = "auto";
 
-    hpWrapper.style.display = 'flex';
-    hpWrapper.style.alignItems = 'center';
-    hpWrapper.style.pointerEvents = 'none';
+    hpWrapper.style.display = "flex";
+    hpWrapper.style.alignItems = "center";
+    hpWrapper.style.pointerEvents = "none";
     hudRoot.appendChild(hpWrapper);
 
     // Фон HP (SVG)
-    const hpBg = document.createElement('div');
-    hpBg.style.position = 'relative';
-    hpBg.style.width = '100%';
-    hpBg.style.height = '100%';
+    const hpBg = document.createElement("div");
+    hpBg.style.position = "relative";
+    hpBg.style.width = "100%";
+    hpBg.style.height = "100%";
     hpBg.style.backgroundImage = "url('./ui/HP_bg.svg')";
-    hpBg.style.backgroundSize = '100% 100%';
-    hpBg.style.backgroundRepeat = 'no-repeat';
-    hpBg.style.filter = 'drop-shadow(0 0 6px rgba(0,0,0,0.6))';
+    hpBg.style.backgroundSize = "100% 100%";
+    hpBg.style.backgroundRepeat = "no-repeat";
+    hpBg.style.filter = "drop-shadow(0 0 6px rgba(0,0,0,0.6))";
     hpWrapper.appendChild(hpBg);
 
     // Имя игрока
-    const hpName = document.createElement('div');
-    hpName.textContent = 'Player';
-    hpName.style.position = 'absolute';
-    hpName.style.left = '30px';
-    hpName.style.top = '42%';
-    hpName.style.transform = 'translateY(-50%)';
-    hpName.style.fontFamily = 'system-ui, sans-serif';
-    hpName.style.fontSize = '14px';
-    hpName.style.rotate = '1.3deg';
-    hpName.style.letterSpacing = '0.06em';
-    hpName.style.color = '#ffffff';
-    hpName.style.textShadow = '0 0 4px rgba(0,0,0,0.6)';
+    const hpName = document.createElement("div");
+    hpName.textContent = "Player";
+    hpName.style.position = "absolute";
+    hpName.style.left = "30px";
+    hpName.style.top = "42%";
+    hpName.style.transform = "translateY(-50%)";
+    hpName.style.fontFamily = "system-ui, sans-serif";
+    hpName.style.fontSize = "14px";
+    hpName.style.rotate = "1.3deg";
+    hpName.style.letterSpacing = "0.06em";
+    hpName.style.color = "#ffffff";
+    hpName.style.textShadow = "0 0 4px rgba(0,0,0,0.6)";
     hpBg.appendChild(hpName);
 
     // Внутренний контейнер под заливку HP:
     // подгоняем под «прямую» часть внутри SVG
-    const hpFillContainer = document.createElement('div');
-    hpFillContainer.style.position = 'absolute';
-    hpFillContainer.style.top = '28%';
-    hpFillContainer.style.bottom = '22%';
-    hpFillContainer.style.left = '90px';
-    hpFillContainer.style.right = '18px';
-    hpFillContainer.style.overflow = 'hidden';
+    const hpFillContainer = document.createElement("div");
+    hpFillContainer.style.position = "absolute";
+    hpFillContainer.style.top = "28%";
+    hpFillContainer.style.bottom = "22%";
+    hpFillContainer.style.left = "90px";
+    hpFillContainer.style.right = "18px";
+    hpFillContainer.style.overflow = "hidden";
     hpBg.appendChild(hpFillContainer);
 
     // Сама заливка HP (SVG), скейлим по X, но с запасом
-    const hpFill = document.createElement('div');
-    hpFill.style.position = 'absolute';
-    hpFill.style.left = '0';
-    hpFill.style.top = '0';
-    hpFill.style.width = '100%';
-    hpFill.style.height = '100%';
+    const hpFill = document.createElement("div");
+    hpFill.style.position = "absolute";
+    hpFill.style.left = "0";
+    hpFill.style.top = "0";
+    hpFill.style.width = "100%";
+    hpFill.style.height = "100%";
     hpFill.style.backgroundImage = "url('./ui/HP.svg')";
-    hpFill.style.backgroundSize = '100% 100%';
-    hpFill.style.backgroundRepeat = 'no-repeat';
-    hpFill.style.rotate = '0.3deg';
-    hpFill.style.transformOrigin = 'left center';
-    hpFill.style.transform = 'scaleX(1)';
+    hpFill.style.backgroundSize = "100% 100%";
+    hpFill.style.backgroundRepeat = "no-repeat";
+    hpFill.style.rotate = "0.3deg";
+    hpFill.style.transformOrigin = "left center";
+    hpFill.style.transform = "scaleX(1)";
     hpFillContainer.appendChild(hpFill);
 
     let hpValue = 1.0;
@@ -143,47 +143,47 @@ async function runVRClient() {
     // ===== TIME PANEL (SAO-STYLE) =====
 
     // ===== TIME PANEL (SAO-STYLE) =====
-    const timePanel = document.createElement('div');
-    timePanel.style.position = 'absolute';
-    timePanel.style.bottom = '4%';
-    timePanel.style.right = '4%';
-    timePanel.style.width = '210px';
-    timePanel.style.height = '70px';
+    const timePanel = document.createElement("div");
+    timePanel.style.position = "absolute";
+    timePanel.style.bottom = "4%";
+    timePanel.style.right = "4%";
+    timePanel.style.width = "210px";
+    timePanel.style.height = "70px";
     timePanel.style.backgroundImage = "url('./ui/Time.svg')";
-    timePanel.style.backgroundSize = '100% 100%';
-    timePanel.style.backgroundRepeat = 'no-repeat';
-    timePanel.style.display = 'flex';
-    timePanel.style.flexDirection = 'column';
-    timePanel.style.justifyContent = 'center';
-    timePanel.style.alignItems = 'flex-end';
-    timePanel.style.paddingRight = '22px';
-    timePanel.style.filter = 'drop-shadow(0 0 5px rgba(0,0,0,0.7))';
+    timePanel.style.backgroundSize = "100% 100%";
+    timePanel.style.backgroundRepeat = "no-repeat";
+    timePanel.style.display = "flex";
+    timePanel.style.flexDirection = "column";
+    timePanel.style.justifyContent = "center";
+    timePanel.style.alignItems = "flex-end";
+    timePanel.style.paddingRight = "22px";
+    timePanel.style.filter = "drop-shadow(0 0 5px rgba(0,0,0,0.7))";
     hudRoot.appendChild(timePanel);
 
-    const timeText = document.createElement('div');
-    timeText.style.fontFamily = 'system-ui, sans-serif';
-    timeText.style.fontSize = '22px';
-    timeText.style.letterSpacing = '0.12em';
-    timeText.style.color = '#ffffff';
-    timeText.style.textShadow = '0 0 6px rgba(0,0,0,0.8)';
+    const timeText = document.createElement("div");
+    timeText.style.fontFamily = "system-ui, sans-serif";
+    timeText.style.fontSize = "22px";
+    timeText.style.letterSpacing = "0.12em";
+    timeText.style.color = "#ffffff";
+    timeText.style.textShadow = "0 0 6px rgba(0,0,0,0.8)";
     timePanel.appendChild(timeText);
 
-    const dateText = document.createElement('div');
-    dateText.style.marginTop = '2px';
-    dateText.style.fontFamily = 'system-ui, sans-serif';
-    dateText.style.fontSize = '12px';
-    dateText.style.letterSpacing = '0.18em';
-    dateText.style.color = 'rgba(255,255,255,0.78)';
-    dateText.style.textShadow = '0 0 4px rgba(0,0,0,0.8)';
+    const dateText = document.createElement("div");
+    dateText.style.marginTop = "2px";
+    dateText.style.fontFamily = "system-ui, sans-serif";
+    dateText.style.fontSize = "12px";
+    dateText.style.letterSpacing = "0.18em";
+    dateText.style.color = "rgba(255,255,255,0.78)";
+    dateText.style.textShadow = "0 0 4px rgba(0,0,0,0.8)";
     timePanel.appendChild(dateText);
 
     function updateClock() {
         const now = new Date();
-        const hh = String(now.getHours()).padStart(2, '0');
-        const mm = String(now.getMinutes()).padStart(2, '0');
+        const hh = String(now.getHours()).padStart(2, "0");
+        const mm = String(now.getMinutes()).padStart(2, "0");
         const yyyy = now.getFullYear();
-        const mo = String(now.getMonth() + 1).padStart(2, '0');
-        const dd = String(now.getDate()).padStart(2, '0');
+        const mo = String(now.getMonth() + 1).padStart(2, "0");
+        const dd = String(now.getDate()).padStart(2, "0");
 
         timeText.textContent = `${hh}:${mm}`;
         dateText.textContent = `${yyyy}/${mo}/${dd}`;
@@ -192,18 +192,18 @@ async function runVRClient() {
     setInterval(updateClock, 1000 * 30);
 
     // ===== FPS (телефон) =====
-    const fpsEl = document.createElement('div');
-    fpsEl.style.position = 'fixed';
-    fpsEl.style.bottom = '4%';
-    fpsEl.style.left = '4%';
-    fpsEl.style.padding = '4px 8px';
-    fpsEl.style.borderRadius = '6px';
-    fpsEl.style.background = 'rgba(0,0,0,0.5)';
-    fpsEl.style.color = '#fff';
-    fpsEl.style.fontFamily = 'system-ui, sans-serif';
-    fpsEl.style.fontSize = '11px';
-    fpsEl.style.zIndex = '25';
-    fpsEl.style.pointerEvents = 'none';
+    const fpsEl = document.createElement("div");
+    fpsEl.style.position = "fixed";
+    fpsEl.style.bottom = "4%";
+    fpsEl.style.left = "4%";
+    fpsEl.style.padding = "4px 8px";
+    fpsEl.style.borderRadius = "6px";
+    fpsEl.style.background = "rgba(0,0,0,0.5)";
+    fpsEl.style.color = "#fff";
+    fpsEl.style.fontFamily = "system-ui, sans-serif";
+    fpsEl.style.fontSize = "11px";
+    fpsEl.style.zIndex = "25";
+    fpsEl.style.pointerEvents = "none";
     document.body.appendChild(fpsEl);
 
     let lastFrameTime = performance.now();
@@ -228,7 +228,7 @@ async function runVRClient() {
 
     // ---------- REMOTE STATE ----------
     let remoteState = {
-        mode: 'orbit',
+        mode: "orbit",
         pos: { x: 0, y: 1000, z: 0 },
         quat: { x: 0, y: 0, z: 0, w: 1 },
     };
@@ -237,6 +237,11 @@ async function runVRClient() {
     let nextFrameData = null; // Blob / ArrayBuffer
     let currentFrameBitmap = null;
     let decoding = false;
+
+    // Предсказание движения для уменьшения latency
+    let lastOrientation = { yaw: 0, pitch: 0, roll: 0 };
+    let orientationVelocity = { yaw: 0, pitch: 0, roll: 0 };
+    let lastOrientationTime = performance.now();
 
     function handleFrame(data) {
         // всегда держим только последний кадр
@@ -255,17 +260,24 @@ async function runVRClient() {
             if (data instanceof Blob) {
                 blob = data;
             } else if (data instanceof ArrayBuffer) {
-                blob = new Blob([data], { type: 'image/jpeg' });
+                blob = new Blob([data], { type: "image/jpeg" });
             } else {
                 decoding = false;
                 return;
             }
 
-            const bitmap = await createImageBitmap(blob);
+            const bitmap = await createImageBitmap(blob, {
+                // Оптимизации для быстрой декодировки
+                imageOrientation: "none",
+                premultiplyAlpha: "none",
+                colorSpaceConversion: "none",
+                resizeQuality: "low", // Приоритет на скорость
+            });
+
             if (currentFrameBitmap) currentFrameBitmap.close();
             currentFrameBitmap = bitmap;
         } catch (e) {
-            console.warn('[VRClient] decode frame error:', e);
+            console.warn("[VRClient] decode frame error:", e);
         } finally {
             decoding = false;
         }
@@ -292,10 +304,48 @@ async function runVRClient() {
 
         ctx.clearRect(0, 0, w, h);
 
-        // левый глаз
-        ctx.drawImage(currentFrameBitmap, 0, 0, iw, ih, dx, dy, dw, dh);
-        // правый глаз — та же картинка
-        ctx.drawImage(currentFrameBitmap, 0, 0, iw, ih, halfW + dx, dy, dw, dh);
+        // Применяем корректировку barrel distortion для простых VR очков
+        // Простая линзовая коррекция (бочкообразные искажения)
+        const barrelStrength = 0.15; // Сила эффекта бочки
+
+        // Левый глаз
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, halfW, h);
+        ctx.clip();
+        drawDistortedImage(ctx, currentFrameBitmap, 0, 0, iw, ih, dx, dy, dw, dh, barrelStrength);
+        ctx.restore();
+
+        // Правый глаз (с небольшим смещением для стерео эффекта)
+        const stereoOffset = 2; // пиксели смещения для иллюзии глубины
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(halfW, 0, halfW, h);
+        ctx.clip();
+        drawDistortedImage(
+            ctx,
+            currentFrameBitmap,
+            0,
+            0,
+            iw,
+            ih,
+            halfW + dx + stereoOffset,
+            dy,
+            dw,
+            dh,
+            barrelStrength
+        );
+        ctx.restore();
+    }
+
+    // Рисует изображение с barrel distortion коррекцией
+    function drawDistortedImage(ctx, img, sx, sy, sw, sh, dx, dy, dw, dh, strength) {
+        // Простая аппроксимация: рисуем без искажений для производительности
+        // В реальном приложении можно использовать WebGL shader для этого
+        ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+
+        // TODO: Для полной бочкообразной коррекции использовать WebGL
+        // с fragment shader для более точной подушкообразной дисторсии
     }
 
     // ---------- LINK TO PC ----------
@@ -311,7 +361,7 @@ async function runVRClient() {
 
     // ---------- ORIENTATION TO PC ----------
     let lastOrientationSend = 0;
-    const ORIENT_INTERVAL = 1000 / 30;
+    const ORIENT_INTERVAL = 1000 / 60; // 60 Hz для более плавного отклика
 
     function sendOrientation(yaw, pitch, roll) {
         if (!link) return;
@@ -319,9 +369,29 @@ async function runVRClient() {
         if (now - lastOrientationSend < ORIENT_INTERVAL) return;
         lastOrientationSend = now;
 
+        // Вычисляем скорость изменения ориентации для предсказания
+        const dt = (now - lastOrientationTime) / 1000;
+        if (dt > 0) {
+            orientationVelocity.yaw = (yaw - lastOrientation.yaw) / dt;
+            orientationVelocity.pitch = (pitch - lastOrientation.pitch) / dt;
+            orientationVelocity.roll = (roll - lastOrientation.roll) / dt;
+        }
+
+        lastOrientation = { yaw, pitch, roll };
+        lastOrientationTime = now;
+
+        // Отправляем текущую ориентацию + скорость для предсказания на сервере
         link.send({
-            type: 'orientation',
-            payload: { yaw, pitch, roll },
+            type: "orientation",
+            payload: {
+                yaw,
+                pitch,
+                roll,
+                vyaw: orientationVelocity.yaw,
+                vpitch: orientationVelocity.pitch,
+                vroll: orientationVelocity.roll,
+                timestamp: now,
+            },
         });
     }
 
@@ -330,62 +400,89 @@ async function runVRClient() {
         const beta = ((ev.beta || 0) * Math.PI) / 180;
         const gamma = ((ev.gamma || 0) * Math.PI) / 180;
 
-        const yaw = alpha;
-        const pitch = beta;
-        const roll = gamma;
+        // Применяем фильтр для сглаживания шумов датчика
+        const smoothing = 0.7; // 0 = нет сглаживания, 1 = максимальное
+        const yaw = lastOrientation.yaw * smoothing + alpha * (1 - smoothing);
+        const pitch = lastOrientation.pitch * smoothing + beta * (1 - smoothing);
+        const roll = lastOrientation.roll * smoothing + gamma * (1 - smoothing);
 
         sendOrientation(yaw, pitch, roll);
     }
 
     async function initOrientation() {
         if (
-            typeof DeviceOrientationEvent !== 'undefined' &&
-            typeof DeviceOrientationEvent.requestPermission === 'function'
+            typeof DeviceOrientationEvent !== "undefined" &&
+            typeof DeviceOrientationEvent.requestPermission === "function"
         ) {
-            const btn = document.createElement('button');
-            btn.textContent = 'Enable VR';
-            btn.style.position = 'fixed';
-            btn.style.bottom = '20px';
-            btn.style.left = '50%';
-            btn.style.transform = 'translateX(-50%)';
-            btn.style.padding = '10px 16px';
-            btn.style.background = 'rgba(0,0,0,0.7)';
-            btn.style.color = '#fff';
-            btn.style.border = 'none';
-            btn.style.borderRadius = '8px';
-            btn.style.fontSize = '14px';
-            btn.style.zIndex = '40';
-            btn.style.pointerEvents = 'auto';
+            const btn = document.createElement("button");
+            btn.textContent = "Enable VR";
+            btn.style.position = "fixed";
+            btn.style.bottom = "20px";
+            btn.style.left = "50%";
+            btn.style.transform = "translateX(-50%)";
+            btn.style.padding = "10px 16px";
+            btn.style.background = "rgba(0,0,0,0.7)";
+            btn.style.color = "#fff";
+            btn.style.border = "none";
+            btn.style.borderRadius = "8px";
+            btn.style.fontSize = "14px";
+            btn.style.zIndex = "40";
+            btn.style.pointerEvents = "auto";
             document.body.appendChild(btn);
 
             btn.onclick = async () => {
                 try {
                     const res = await DeviceOrientationEvent.requestPermission();
-                    if (res === 'granted') {
-                        window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+                    if (res === "granted") {
+                        window.addEventListener("deviceorientation", handleDeviceOrientation, true);
                         document.body.removeChild(btn);
                     } else {
-                        btn.textContent = 'Permission denied';
+                        btn.textContent = "Permission denied";
                     }
                 } catch (e) {
                     console.error(e);
-                    btn.textContent = 'Error requesting permission';
+                    btn.textContent = "Error requesting permission";
                 }
             };
         } else {
-            window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+            window.addEventListener("deviceorientation", handleDeviceOrientation, true);
         }
     }
 
     initOrientation();
 
     // ---------- MAIN LOOP ----------
+    let lastFrameTime = performance.now();
+
     function animate() {
         requestAnimationFrame(animate);
+
+        const now = performance.now();
+        const deltaTime = (now - lastFrameTime) / 1000;
+        lastFrameTime = now;
+
+        // Предсказываем следующую позицию для компенсации latency
+        if (orientationVelocity.yaw !== 0 || orientationVelocity.pitch !== 0 || orientationVelocity.roll !== 0) {
+            const predictTime = 0.033; // 33ms предсказание (~2 кадра при 60fps)
+
+            // Используем экстраполяцию для предсказания будущей ориентации
+            // Это компенсирует задержку сети и рендеринга
+            const predictedYaw = lastOrientation.yaw + orientationVelocity.yaw * predictTime;
+            const predictedPitch = lastOrientation.pitch + orientationVelocity.pitch * predictTime;
+            const predictedRoll = lastOrientation.roll + orientationVelocity.roll * predictTime;
+
+            // TODO: Применить предсказанную ориентацию к рендерингу
+            // (требует передачи matrix transformation в rendering pipeline)
+        }
+
         decodeNextFrame();
         drawFrame();
         updateFps();
-        // hpValue пока фиксированный; потом можно получать из стейта
+
+        // Автоматическое обновление HP из remoteState
+        if (remoteState && remoteState.hp !== undefined) {
+            setHpFraction(remoteState.hp);
+        }
     }
 
     animate();
@@ -393,11 +490,11 @@ async function runVRClient() {
 
 runVRClient().catch((err) => {
     console.error(err);
-    const pre = document.createElement('pre');
-    pre.style.position = 'absolute';
-    pre.style.top = '30px';
-    pre.style.left = '10px';
-    pre.style.color = 'red';
+    const pre = document.createElement("pre");
+    pre.style.position = "absolute";
+    pre.style.top = "30px";
+    pre.style.left = "10px";
+    pre.style.color = "red";
     pre.textContent = String(err);
     document.body.appendChild(pre);
 });

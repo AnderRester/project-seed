@@ -2,10 +2,16 @@ use seed_config::{CosmosConfig, WorldConfig};
 use thiserror::Error;
 
 pub mod biome;
+pub mod catastrophe;
+pub mod objects;
 pub mod terrain;
 
 pub use biome::{generate_biome_map_from_config, BiomeMap};
-pub use terrain::{generate_heightmap_from_config, Heightmap, compute_flow_accumulation};
+pub use catastrophe::{
+    apply_catastrophe_to_heightmap, generate_catastrophes, Catastrophe, CatastropheType,
+};
+pub use objects::{generate_objects_for_chunk, ObjectType, ProceduralObject};
+pub use terrain::{compute_flow_accumulation, generate_heightmap_from_config, Heightmap};
 
 #[derive(Debug, Error)]
 pub enum CoreError {

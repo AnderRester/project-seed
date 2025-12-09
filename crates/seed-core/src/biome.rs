@@ -103,7 +103,7 @@ fn smooth_biome_map(src: &BiomeMap, iterations: u32) -> BiomeMap {
 
 #[derive(Clone, Copy, Debug)]
 struct BiomeSample {
-    pub latitude: f64,
+    pub _latitude: f64,
     pub elevation_m: f64,
     pub temperature_c: f64,
     pub humidity: f64,
@@ -166,7 +166,7 @@ pub fn generate_biome_map_from_config(cfg: &WorldConfig, hm: &Heightmap) -> Biom
             let climate = sample_climate(cfg, lat, elevation_m);
 
             let sample = BiomeSample {
-                latitude: lat,
+                _latitude: lat,
                 elevation_m,
                 temperature_c: climate.temperature_c,
                 humidity: climate.humidity,

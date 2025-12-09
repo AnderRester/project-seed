@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>VR Client Enhanced - Mobile</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            width: 100%;
+            height: 100vh;
+            overflow: hidden;
+            background: #000;
+            touch-action: none;
+            position: fixed;
+        }
+
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #7e22ce 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s;
+        }
+
+        #loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loader {
+            width: 60px;
+            height: 60px;
+            border: 6px solid rgba(255, 255, 255, 0.2);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .loading-text {
+            margin-top: 20px;
+            color: #fff;
+            font-size: 18px;
+            font-weight: 500;
+            font-family: system-ui, sans-serif;
+        }
+
+        #permissionPrompt {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+            z-index: 40;
+            display: none;
+        }
+
+        #permissionPrompt.show {
+            display: block;
+        }
+
+        #permissionPrompt h2 {
+            color: #fff;
+            font-family: system-ui, sans-serif;
+            margin-bottom: 15px;
+        }
+
+        #permissionPrompt p {
+            color: #bbb;
+            font-family: system-ui, sans-serif;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        #permissionPrompt button {
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+        }
+
+        #permissionPrompt button:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="loading">
+        <div class="loader"></div>
+        <div class="loading-text">Loading VR Client...</div>
+    </div>
+
+    <div id="permissionPrompt">
+        <h2>📱 Motion Sensors</h2>
+        <p>Allow access to device orientation for VR tracking?</p>
+        <button id="allowSensors">Enable VR Tracking</button>
+    </div>
+
+    <script type="module">
+        import './vr_client_enhanced.js';
+
+        // Hide loading screen after initialization
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const loading = document.getElementById('loading');
+                loading.classList.add('hidden');
+                setTimeout(() => {
+                    loading.style.display = 'none';
+                }, 500);
+            }, 1500);
+        });
+
+        // Handle sensor permission prompt
+        const prompt = document.getElementById('permissionPrompt');
+        const allowBtn = document.getElementById('allowSensors');
+
+        // Show prompt if needed (iOS 13+)
+        if (typeof DeviceOrientationEvent !== 'undefined' &&
+            typeof DeviceOrientationEvent.requestPermission === 'function') {
+            setTimeout(() => {
+                prompt.classList.add('show');
+            }, 2000);
+        }
+
+        allowBtn.addEventListener('click', () => {
+            if (typeof DeviceOrientationEvent !== 'undefined' &&
+                typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(permissionState => {
+                        if (permissionState === 'granted') {
+                            prompt.classList.remove('show');
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                prompt.classList.remove('show');
+            }
+        });
+    </script>
+</body>
+
+</html>

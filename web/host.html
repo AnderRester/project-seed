@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VR Host - Streaming Server</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #fff;
+            overflow: hidden;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #viewer {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #roomCodePanel {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.15), rgba(0, 153, 255, 0.15));
+            backdrop-filter: blur(20px);
+            padding: 60px 80px;
+            border-radius: 24px;
+            box-shadow: 0 16px 64px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1);
+            text-align: center;
+            z-index: 100;
+        }
+
+        #roomCodePanel h1 {
+            font-size: 28px;
+            margin-bottom: 30px;
+            color: #00d4ff;
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+            letter-spacing: 2px;
+        }
+
+        #roomCode {
+            font-size: 72px;
+            font-weight: 900;
+            letter-spacing: 12px;
+            color: #ffffff;
+            text-shadow: 0 0 30px rgba(0, 212, 255, 0.8), 0 0 60px rgba(0, 212, 255, 0.4);
+            margin: 20px 0;
+            padding: 30px 50px;
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.1), rgba(0, 153, 255, 0.1));
+            border-radius: 16px;
+            border: 2px solid rgba(0, 212, 255, 0.3);
+        }
+
+        #instructions {
+            font-size: 16px;
+            color: #aaa;
+            margin-top: 25px;
+            line-height: 1.6;
+        }
+
+        #playerStats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 12px;
+            min-width: 250px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        #playerStats h3 {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #playerCount {
+            font-size: 36px;
+            font-weight: 700;
+            color: #4CAF50;
+            margin-bottom: 15px;
+        }
+
+        #playerList {
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 13px;
+        }
+
+        .player-item {
+            padding: 8px 12px;
+            margin: 5px 0;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            border-left: 3px solid #00d4ff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .player-status {
+            width: 8px;
+            height: 8px;
+            background: #4CAF50;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.4;
+            }
+        }
+
+        #status {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            padding: 12px 20px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            font-size: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        #modeInfo {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            padding: 15px 20px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            font-size: 13px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        #modeInfo div {
+            margin: 5px 0;
+        }
+
+        .key {
+            display: inline-block;
+            padding: 2px 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            font-family: monospace;
+            font-weight: 600;
+            color: #00d4ff;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="container">
+        <div id="viewer"></div>
+    </div>
+
+    <div id="roomCodePanel">
+        <h1>🎮 VR STREAMING HOST</h1>
+        <div id="roomCode">----</div>
+        <div id="instructions">
+            Clients can connect using this code<br>
+            Open <strong>vr_client_enhanced.html</strong> on VR device
+        </div>
+    </div>
+
+    <div id="playerStats">
+        <h3>👥 Connected Players</h3>
+        <div id="playerCount">0</div>
+        <div id="playerList"></div>
+    </div>
+
+    <div id="modeInfo">
+        <div><span class="key">Numpad 0</span> Orbit Camera</div>
+        <div><span class="key">Numpad 1</span> FPS Mode</div>
+        <div><span class="key">WASD</span> Move (FPS)</div>
+        <div><span class="key">Shift</span> Sprint</div>
+        <div><span class="key">Space</span> Jump</div>
+    </div>
+
+    <div id="status">⚡ Initializing...</div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="./host.js"></script>
+</body>
+
+</html>

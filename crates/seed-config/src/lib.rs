@@ -215,6 +215,8 @@ pub struct BiomeConfig {
     pub display_name: String,
     pub climate_range: BiomeClimateRangeConfig,
     pub precipitation_range_mm_per_year: [f64; 2],
+    pub base_material_id: Option<String>,
+    pub overlay_material_ids: Option<Vec<String>>,
     pub dominant_materials: Vec<String>,
     pub vegetation_density: f32,
     pub fauna_profiles: Vec<String>,

@@ -2,7 +2,7 @@
     "seedVersion": "0.1.0",
     "worldId": "example-world",
     "worldSeed": 256454,
-    "seaLevel": 0.22,
+    "seaLevel": 0.11,
     "meta": {
         "name": "Example World",
         "description": "Prototype procedural world config for SEED-like engine.",
@@ -93,7 +93,7 @@
         "heightmap": {
             "generationMode": "tectonic_erosion",
             "baseSeed": 123456,
-            "continentalScaleKm": 6000.0,
+            "continentalScaleKm": 4000.0,
             "mountainAmplitudeMeters": 4000.0,
             "erosionIterations": 200,
             "riverDensity": 0.7

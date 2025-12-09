@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Seed Server Proto Client</title>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; }
+    #log { white-space: pre; background: #111; color: #0f0; padding: 0.5rem; height: 300px; overflow: auto; }
+    button { margin-right: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Seed Server Proto Client</h1>
+  <div>
+    <button id="connectBtn">Connect</button>
+    <button id="moveBtn">Move random</button>
+  </div>
+  <pre id="log"></pre>
+  <script>
+    const logEl = document.getElementById('log');
+    function log(msg) {
+      logEl.textContent += msg + '\n';
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    let ws;
+    const clientId = 'pc-' + Math.random().toString(36).slice(2, 8);
+
+    document.getElementById('connectBtn').onclick = () => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        log('Already connected');
+        return;
+      }
+      ws = new WebSocket('ws://localhost:9000/ws');
+      ws.onopen = () => {
+        log('WS open, sending join as ' + clientId);
+        ws.send(JSON.stringify({ type: 'join', client_id: clientId }));
+      };
+      ws.onmessage = (ev) => {
+        log('<< ' + ev.data);
+      };
+      ws.onerror = (ev) => {
+        log('WS error: ' + ev.message);
+      };
+      ws.onclose = () => log('WS closed');
+    };
+
+    document.getElementById('moveBtn').onclick = () => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        log('Not connected');
+        return;
+      }
+      const dx = (Math.random() - 0.5) * 2;
+      const dz = (Math.random() - 0.5) * 2;
+      ws.send(JSON.stringify({ type: 'input', client_id: clientId, dx, dy: 0, dz }));
+      log('>> input dx=' + dx.toFixed(2) + ' dz=' + dz.toFixed(2));
+    };
+  </script>
+</body>
+</html>

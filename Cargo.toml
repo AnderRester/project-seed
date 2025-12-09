@@ -3,6 +3,7 @@ members = [
     "crates/seed-config",
     "crates/seed-core",
     "crates/seed-cli",
-    "crates/seed-wasm"
+    "crates/seed-wasm",
+    "crates/seed-server"
 ]
 resolver = "2"
